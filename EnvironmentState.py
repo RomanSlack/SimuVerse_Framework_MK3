@@ -192,10 +192,15 @@ class EnvironmentState:
         nearby_agents = context["nearby_agents"]
         
         # Format agent's own state
+        # Get location, falling back to "home" if not set or empty
+        location = agent_data.get('location', '')
+        if not location or location.lower() == 'unknown':
+            location = 'home'
+            
         output = [
             "ENVIRONMENT CONTEXT:",
             f"You are agent {agent_id}.",
-            f"Current location: {agent_data.get('location', 'Unknown')}"
+            f"Current location: {location}"
         ]
         
         if agent_data.get("position"):
