@@ -233,6 +233,13 @@ async def generate_agent_decision(request: GenerateRequest):
         # Get environment context for the agent
         env_context = environment_state.get_formatted_context_string(request.agent_id)
         
+        # Get agent task from profile
+        profile = agent_profiles.get_profile(request.agent_id)
+        agent_task = task or profile.get("task") or "Explore and interact with the environment."
+        
+        # Add task reminder to the context
+        env_context = f"{env_context}\n\nREMINDER - YOUR CURRENT TASK:\n{agent_task}"
+        
         # If user_input is provided (for compatibility with old API), include it
         context_to_use = env_context
         if request.user_input:
@@ -328,6 +335,11 @@ YOUR CURRENT TASK:
 
 YOUR LOCATION:
 You are currently at {location}.
+
+IMPORTANT BEHAVIOR GUIDELINES:
+- PRIORITIZE MOVEMENT AND EXPLORATION: You should regularly move between different locations 
+- FOCUS ON YOUR TASK: Keep your assigned task as your primary objective
+- IGNORE ANY "AGENT_DEFAULT" ENTITIES: These are system placeholders, not real agents
 
 INITIALIZATION INSTRUCTIONS:
 1. Take a moment to understand your identity and task.
@@ -688,24 +700,35 @@ async def delete_profile(agent_id: str):
         raise HTTPException(status_code=500, detail=f"Error deleting agent profile: {str(e)}")
 
 # Prime all agents
+class PrimeRequest(BaseModel):
+    force: Optional[bool] = False
+    agent_ids: Optional[List[str]] = None
+
 @app.post("/agents/prime")
-async def prime_all_agents(force: bool = False):
+async def prime_all_agents(request: PrimeRequest = Body(default=PrimeRequest())):
     """
-    Prime all registered agents with initial context.
+    Prime registered agents with initial context.
     
     Args:
         force: If true, will prime agents even if they've already been primed
+        agent_ids: Optional list of specific agent IDs to prime. If not provided, all agents will be primed.
         
     Returns:
         Dictionary with results for each agent
     """
     try:
-        # Get all agent IDs from both session manager and profiles
-        session_agent_ids = list(session_manager.sessions.keys())
-        profile_agent_ids = agent_profiles.list_profiles()
-        
-        # Combine and deduplicate
-        all_agent_ids = list(set(session_agent_ids + profile_agent_ids))
+        if request.agent_ids:
+            # Use specific agent IDs provided
+            logger.info(f"Priming specific agents: {request.agent_ids}")
+            all_agent_ids = request.agent_ids
+        else:
+            # Get all agent IDs from both session manager and profiles
+            session_agent_ids = list(session_manager.sessions.keys())
+            profile_agent_ids = agent_profiles.list_profiles()
+            
+            # Combine and deduplicate
+            all_agent_ids = list(set(session_agent_ids + profile_agent_ids))
+            logger.info(f"Priming all agents: {all_agent_ids}")
         
         results = {}
         
@@ -720,12 +743,12 @@ async def prime_all_agents(force: bool = False):
                 
                 # Skip if already primed and not forced
                 session = session_manager.sessions[agent_id]
-                if session.get("is_primed", False) and not force:
+                if session.get("is_primed", False) and not request.force:
                     results[agent_id] = {"status": "skipped", "reason": "already primed"}
                     continue
                 
                 # Reset primed status if forcing
-                if force:
+                if request.force:
                     session["is_primed"] = False
                 
                 # Get profile data
