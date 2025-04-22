@@ -110,6 +110,82 @@ class AgentSessionManager:
         """
         session = await self.get_or_create_session(agent_id)
         session["location"] = location
+        
+    async def prime_agent(self, agent_id: str, primer_text: str) -> Dict[str, Any]:
+        """
+        Send an initial primer message to the agent to establish context.
+        This is only done once at the beginning of the simulation.
+        
+        Args:
+            agent_id: Unique identifier for the agent
+            primer_text: The primer text to send
+            
+        Returns:
+            Dictionary containing the agent's response
+        """
+        session = await self.get_or_create_session(agent_id)
+        
+        # Check if agent has already been primed
+        if session.get("is_primed", False):
+            logger.info(f"Agent {agent_id} has already been primed. Skipping.")
+            return {"agent_id": agent_id, "text": "Already primed", "skipped": True}
+        
+        # Add primer message as a user message
+        await self.add_message(agent_id, "user", primer_text)
+        
+        try:
+            start_time = time.time()
+            
+            messages = session["message_history"]
+            
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": m["role"], "content": m["content"]} for m in messages],
+                temperature=0.5,  # Lower temperature for more deterministic primer responses
+                max_tokens=300
+            )
+            
+            # Extract the text from the response
+            response_text = response.choices[0].message.content
+            
+            # Add the response to the history
+            await self.add_message(agent_id, "assistant", response_text)
+            
+            # Mark the agent as primed
+            session["is_primed"] = True
+            
+            # Log request details
+            response_time = time.time() - start_time
+            self._log_event(agent_id, "agent_primed", {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "response_time_seconds": response_time,
+                "response": response_text
+            })
+            
+            return {
+                "agent_id": agent_id,
+                "text": response_text,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens
+                },
+                "response_time_seconds": response_time,
+                "model": self.model
+            }
+            
+        except Exception as e:
+            error_msg = f"Error priming agent: {str(e)}"
+            logger.error(error_msg)
+            self._log_event(agent_id, "error", {"message": error_msg})
+            
+            # Return a basic error response
+            return {
+                "agent_id": agent_id,
+                "text": "Error priming agent",
+                "error": str(e)
+            }
     
     async def add_message(self, agent_id: str, role: str, content: str) -> None:
         """

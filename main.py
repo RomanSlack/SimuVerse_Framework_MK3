@@ -17,6 +17,7 @@ from AgentSessionManager import AgentSessionManager
 from UnityAPIClient import UnityAPIClient
 from ActionDispatcher import ActionDispatcher
 from EnvironmentState import EnvironmentState
+from AgentProfileManager import AgentProfileManager
 import dotenv
 dotenv.load_dotenv()
 # Load environment variables
@@ -149,6 +150,9 @@ session_manager = AgentSessionManager(api_key=OPENAI_API_KEY)
 action_dispatcher = ActionDispatcher(unity_client)
 environment_state = EnvironmentState()
 agent_logger = AgentLogger()  # Initialize agent logger
+agent_profiles = AgentProfileManager(
+    profiles_path=os.path.join(AGENT_LOGS_DIR, "..", "agent_profiles.json")
+)
 
 # Background tasks
 environment_poll_task = None
@@ -176,6 +180,7 @@ class RegisterAgentRequest(BaseModel):
     system_prompt: Optional[str] = Field(None, description="System prompt for the agent")
     personality: Optional[str] = Field(None, description="Personality traits for the agent")
     initial_location: Optional[str] = Field(None, description="Initial location for the agent")
+    should_prime: Optional[bool] = Field(True, description="Whether to send an initial primer message to the agent")
     
 class EnvironmentUpdateRequest(BaseModel):
     agents: Optional[List[Dict[str, Any]]] = Field(None, description="Updated agent states")
@@ -207,16 +212,23 @@ async def generate_agent_decision(request: GenerateRequest):
     try:
         logger.info(f"Received generate request for agent: {request.agent_id}")
         
+        # Get profile for this agent
+        profile = agent_profiles.get_profile(request.agent_id)
+        
+        # Use profile data if available, otherwise fall back to request parameters
+        personality = request.personality or profile.get("personality")
+        task = request.task or profile.get("task")
+        
         # Ensure the agent session exists
         await session_manager.get_or_create_session(
             agent_id=request.agent_id,
             system_prompt=request.system_prompt,
-            personality=request.personality
+            personality=personality
         )
         
         # Update task if provided
-        if request.task:
-            await session_manager.update_session_task(request.agent_id, request.task)
+        if task:
+            await session_manager.update_session_task(request.agent_id, task)
         
         # Get environment context for the agent
         env_context = environment_state.get_formatted_context_string(request.agent_id)
@@ -281,27 +293,80 @@ async def execute_agent_action(agent_id: str, action: AgentActionRequest):
         logger.error(f"Error executing agent action: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error executing agent action: {str(e)}")
 
+def generate_primer_text(agent_id: str, personality: str = None, task: str = None, location: str = None) -> str:
+    """
+    Generate a primer text for initializing an agent.
+    This provides context about their identity, personality, task, and location.
+    
+    Args:
+        agent_id: Agent identifier
+        personality: Agent personality description
+        task: Agent's current task
+        location: Agent's initial location
+        
+    Returns:
+        Formatted primer text
+    """
+    # Get profile information if available
+    profile = agent_profiles.get_profile(agent_id)
+    
+    # Use provided values or fall back to profile values
+    personality = personality or profile.get("personality") or "You have a helpful and analytical personality."
+    task = task or profile.get("task") or "Explore your surroundings and interact with other agents."
+    location = location or profile.get("default_location") or "center"
+    
+    primer = f"""
+SIMULATION INITIALIZATION
+
+You are {agent_id}, an autonomous agent in a Mars colony simulation.
+
+YOUR IDENTITY:
+{personality}
+
+YOUR CURRENT TASK:
+{task}
+
+YOUR LOCATION:
+You are currently at {location}.
+
+INITIALIZATION INSTRUCTIONS:
+1. Take a moment to understand your identity and task.
+2. You'll soon receive environmental information and will be asked to make decisions.
+3. For now, acknowledge this initialization and express your readiness to begin.
+4. Do NOT take any actions yet - just acknowledge receipt of this information.
+
+Reply with a brief acknowledgment that you understand who you are and what your task is.
+Do not include any action commands (MOVE, SPEAK, CONVERSE, NOTHING) in this initial response.
+"""
+    
+    return primer
+
 @app.post("/agent/register")
 async def register_agent(request: RegisterAgentRequest):
     """
     Register a new agent with the backend.
     """
     try:
+        # Get or load agent profile
+        profile = agent_profiles.get_profile(request.agent_id)
+        personality = request.personality or profile.get("personality")
+        initial_location = request.initial_location or profile.get("default_location")
+        
         # Create agent session
         session = await session_manager.get_or_create_session(
             agent_id=request.agent_id,
             system_prompt=request.system_prompt,
-            personality=request.personality
+            personality=personality
         )
         
         # Update location if provided
-        if request.initial_location:
-            await session_manager.update_session_location(request.agent_id, request.initial_location)
+        if initial_location:
+            await session_manager.update_session_location(request.agent_id, initial_location)
             
             # Update environment state
             environment_state.update_agent_state(request.agent_id, {
                 "id": request.agent_id,
-                "location": request.initial_location,
+                "location": initial_location,
                 "status": "Idle"
             })
         
@@ -310,18 +375,40 @@ async def register_agent(request: RegisterAgentRequest):
         if await unity_client.check_connection():
             try:
                 agent_data = {
-                    "personality": request.personality or "Default personality",
-                    "initial_location": request.initial_location
+                    "personality": personality or "Default personality",
+                    "initial_location": initial_location
                 }
                 unity_result = await unity_client.register_agent(request.agent_id, agent_data)
             except Exception as e:
                 logger.warning(f"Failed to register agent with Unity: {str(e)}")
                 unity_result = {"status": "failed", "error": str(e)}
         
+        # Send the primer if requested
+        primer_result = {"primed": False}
+        if request.should_prime:
+            # Generate primer text
+            task = profile.get("task")
+            primer_text = generate_primer_text(
+                agent_id=request.agent_id,
+                personality=personality,
+                task=task,
+                location=initial_location
+            )
+            
+            # Prime the agent
+            primer_response = await session_manager.prime_agent(request.agent_id, primer_text)
+            primer_result = {
+                "primed": True,
+                "response": primer_response.get("text", "No response")
+            }
+            
+            logger.info(f"Agent {request.agent_id} primed successfully")
+        
         return {
             "status": "success",
             "agent_id": request.agent_id,
-            "unity_registration": unity_result
+            "unity_registration": unity_result,
+            "primer_result": primer_result
         }
     
     except Exception as e:
@@ -496,6 +583,194 @@ async def list_logged_agents():
     except Exception as e:
         logger.error(f"Error listing agent logs: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error listing agent logs: {str(e)}")
+        
+# Agent Profile Management API
+
+class ProfileData(BaseModel):
+    personality: Optional[str] = None
+    task: Optional[str] = None
+    default_location: Optional[str] = None
+
+@app.get("/profiles")
+async def list_profiles():
+    """
+    List all agent profiles.
+    """
+    try:
+        profiles = {agent_id: agent_profiles.get_profile(agent_id) 
+                   for agent_id in agent_profiles.list_profiles()}
+        
+        return {
+            "status": "success",
+            "profile_count": len(profiles),
+            "profiles": profiles
+        }
+    
+    except Exception as e:
+        logger.error(f"Error listing agent profiles: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error listing agent profiles: {str(e)}")
+
+@app.get("/profiles/{agent_id}")
+async def get_profile(agent_id: str):
+    """
+    Get a specific agent's profile.
+    """
+    try:
+        profile = agent_profiles.get_profile(agent_id)
+        
+        if not profile:
+            return {
+                "status": "not_found",
+                "message": f"No profile found for agent {agent_id}"
+            }
+        
+        return {
+            "status": "success",
+            "agent_id": agent_id,
+            "profile": profile
+        }
+    
+    except Exception as e:
+        logger.error(f"Error retrieving agent profile: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error retrieving agent profile: {str(e)}")
+
+@app.post("/profiles/{agent_id}")
+async def update_profile(agent_id: str, profile_data: ProfileData):
+    """
+    Update an agent's profile.
+    """
+    try:
+        # Filter out None values
+        update_data = {k: v for k, v in profile_data.model_dump().items() if v is not None}
+        
+        if not update_data:
+            return {
+                "status": "error",
+                "message": "No profile data provided"
+            }
+        
+        # Update profile
+        agent_profiles.set_profile(agent_id, update_data)
+        
+        # Log the update
+        logger.info(f"Updated profile for agent {agent_id}: {update_data}")
+        
+        return {
+            "status": "success",
+            "agent_id": agent_id,
+            "updated_fields": list(update_data.keys()),
+            "profile": agent_profiles.get_profile(agent_id)
+        }
+    
+    except Exception as e:
+        logger.error(f"Error updating agent profile: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error updating agent profile: {str(e)}")
+
+@app.delete("/profiles/{agent_id}")
+async def delete_profile(agent_id: str):
+    """
+    Delete an agent's profile.
+    """
+    try:
+        if agent_profiles.delete_profile(agent_id):
+            return {
+                "status": "success",
+                "message": f"Profile for agent {agent_id} deleted"
+            }
+        else:
+            return {
+                "status": "not_found",
+                "message": f"No profile found for agent {agent_id}"
+            }
+    
+    except Exception as e:
+        logger.error(f"Error deleting agent profile: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error deleting agent profile: {str(e)}")
+
+# Prime all agents
+@app.post("/agents/prime")
+async def prime_all_agents(force: bool = False):
+    """
+    Prime all registered agents with initial context.
+    
+    Args:
+        force: If true, will prime agents even if they've already been primed
+        
+    Returns:
+        Dictionary with results for each agent
+    """
+    try:
+        # Get all agent IDs from both session manager and profiles
+        session_agent_ids = list(session_manager.sessions.keys())
+        profile_agent_ids = agent_profiles.list_profiles()
+        
+        # Combine and deduplicate
+        all_agent_ids = list(set(session_agent_ids + profile_agent_ids))
+        
+        results = {}
+        
+        for agent_id in all_agent_ids:
+            try:
+                # Check if agent has a session
+                if agent_id not in session_manager.sessions:
+                    # Create session with profile data
+                    profile = agent_profiles.get_profile(agent_id)
+                    personality = profile.get("personality")
+                    await session_manager.get_or_create_session(agent_id, personality=personality)
+                
+                # Skip if already primed and not forced
+                session = session_manager.sessions[agent_id]
+                if session.get("is_primed", False) and not force:
+                    results[agent_id] = {"status": "skipped", "reason": "already primed"}
+                    continue
+                
+                # Reset primed status if forcing
+                if force:
+                    session["is_primed"] = False
+                
+                # Get profile data
+                profile = agent_profiles.get_profile(agent_id)
+                personality = profile.get("personality")
+                task = profile.get("task")
+                location = profile.get("default_location") or session.get("location", "center")
+                
+                # Generate primer text
+                primer_text = generate_primer_text(
+                    agent_id=agent_id,
+                    personality=personality,
+                    task=task,
+                    location=location
+                )
+                
+                # Prime the agent
+                response = await session_manager.prime_agent(agent_id, primer_text)
+                
+                # Record result
+                results[agent_id] = {
+                    "status": "success",
+                    "response": response.get("text")
+                }
+                
+                logger.info(f"Agent {agent_id} primed successfully")
+                
+            except Exception as e:
+                logger.error(f"Error priming agent {agent_id}: {str(e)}")
+                results[agent_id] = {
+                    "status": "error",
+                    "error": str(e)
+                }
+        
+        return {
+            "status": "success",
+            "primed_count": sum(1 for r in results.values() if r.get("status") == "success"),
+            "skipped_count": sum(1 for r in results.values() if r.get("status") == "skipped"),
+            "error_count": sum(1 for r in results.values() if r.get("status") == "error"),
+            "results": results
+        }
+        
+    except Exception as e:
+        logger.error(f"Error priming agents: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error priming agents: {str(e)}")
 
 # Environment polling task
 async def poll_environment():
