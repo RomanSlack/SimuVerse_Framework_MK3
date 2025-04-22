@@ -336,10 +336,19 @@ YOUR CURRENT TASK:
 YOUR LOCATION:
 You are currently at {location}.
 
+AVAILABLE LOCATIONS:
+You can move between these locations: home, park, library, cantina, gym, o2_regulator_room
+
 IMPORTANT BEHAVIOR GUIDELINES:
 - PRIORITIZE MOVEMENT AND EXPLORATION: You should regularly move between different locations 
 - FOCUS ON YOUR TASK: Keep your assigned task as your primary objective
 - IGNORE ANY "AGENT_DEFAULT" ENTITIES: These are system placeholders, not real agents
+
+ACTIONS:
+1) MOVE: <location_name> - Move to a specific location (like "MOVE: park" or "MOVE: library")
+2) SPEAK: <message> - Say something that other nearby agents can hear
+3) CONVERSE: <agent_name> - Initiate a directed conversation with another agent
+4) NOTHING: - Do nothing for this turn
 
 INITIALIZATION INSTRUCTIONS:
 1. Take a moment to understand your identity and task.

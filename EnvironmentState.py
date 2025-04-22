@@ -200,7 +200,8 @@ class EnvironmentState:
         output = [
             "ENVIRONMENT CONTEXT:",
             f"You are agent {agent_id}.",
-            f"Current location: {location}"
+            f"Current location: {location}",
+            f"Available locations: home, park, library, cantina, gym, o2_regulator_room"
         ]
         
         if agent_data.get("position"):
