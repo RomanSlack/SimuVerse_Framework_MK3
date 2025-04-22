@@ -64,6 +64,7 @@ environment_poll_task = None
 # Request/Response Models
 class GenerateRequest(BaseModel):
     agent_id: str = Field(..., description="Unique identifier for the agent")
+    user_input: Optional[str] = Field(None, description="User input to process (for compatibility)")
     system_prompt: Optional[str] = Field(None, description="System prompt for the agent (only needed on first request)")
     personality: Optional[str] = Field(None, description="Personality traits for the agent")
     task: Optional[str] = Field(None, description="Current task for the agent")
@@ -112,6 +113,8 @@ async def generate_agent_decision(request: GenerateRequest):
     Generate a decision for an agent based on its current state.
     """
     try:
+        logger.info(f"Received generate request for agent: {request.agent_id}")
+        
         # Ensure the agent session exists
         await session_manager.get_or_create_session(
             agent_id=request.agent_id,
@@ -126,14 +129,23 @@ async def generate_agent_decision(request: GenerateRequest):
         # Get environment context for the agent
         env_context = environment_state.get_formatted_context_string(request.agent_id)
         
+        # If user_input is provided (for compatibility with old API), include it
+        context_to_use = env_context
+        if request.user_input:
+            logger.info(f"Using provided user_input for agent {request.agent_id}")
+            context_to_use = f"{context_to_use}\n\nUser Input: {request.user_input}"
+        
         # Generate response from LLM
-        llm_response = await session_manager.generate_response(request.agent_id, env_context)
+        llm_response = await session_manager.generate_response(request.agent_id, context_to_use)
         
         # Parse the response for actions
         parsed_action = action_dispatcher.parse_llm_output(request.agent_id, llm_response["text"])
         
         # Dispatch the action (async)
         asyncio.create_task(action_dispatcher.dispatch_action(parsed_action))
+        
+        # Log the response and action
+        logger.info(f"Generated response for agent {request.agent_id}: action_type={parsed_action['action_type']}, action_param={parsed_action['action_param']}")
         
         return GenerateResponse(
             agent_id=request.agent_id,
@@ -255,11 +267,18 @@ async def update_environment(update: EnvironmentUpdateRequest):
     Update the environment state with new data from Unity.
     """
     try:
+        # Log the update request
+        logger.info(f"Received environment update with {len(update.agents or [])} agents, {len(update.locations or [])} locations, {len(update.objects or [])} objects")
+        
         # Convert to dict and process the update
         update_dict = update.model_dump(exclude_none=True)
         environment_state.process_environment_update(update_dict)
         
-        return {"status": "success", "message": "Environment state updated"}
+        # Log the result
+        agent_count = len(environment_state.agent_states)
+        logger.info(f"Environment state updated successfully. Now tracking {agent_count} agents.")
+        
+        return {"status": "success", "message": "Environment state updated", "agent_count": agent_count}
     
     except Exception as e:
         logger.error(f"Error updating environment state: {str(e)}", exc_info=True)
