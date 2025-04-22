@@ -3,6 +3,9 @@ import uvicorn
 import asyncio
 import logging
 import json
+import datetime
+import shutil
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Body
 from fastapi.responses import JSONResponse
@@ -29,6 +32,94 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Agent logging directory
+AGENT_LOGS_DIR = "/home/roman-slack/SimuExoV1/SimuVerse_Backend/agent_logs"
+
+# Create agent logs directory if it doesn't exist
+Path(AGENT_LOGS_DIR).mkdir(parents=True, exist_ok=True)
+
+class AgentLogger:
+    """
+    Logger class for tracking agent interactions
+    """
+    def __init__(self, logs_dir=AGENT_LOGS_DIR):
+        self.logs_dir = logs_dir
+        self.session_start_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.agent_logs = {}  # Store in-memory logs for each agent
+        
+    def reset_logs(self):
+        """Clear all logs and backup old logs"""
+        # Create a backup directory with timestamp
+        backup_dir = os.path.join(self.logs_dir, f"backup_{self.session_start_time}")
+        
+        # If there are existing log files, back them up
+        log_files = list(Path(self.logs_dir).glob("agent_*.json"))
+        if log_files:
+            Path(backup_dir).mkdir(exist_ok=True)
+            for log_file in log_files:
+                try:
+                    shutil.copy2(log_file, os.path.join(backup_dir, log_file.name))
+                except Exception as e:
+                    logger.warning(f"Failed to backup log file {log_file}: {str(e)}")
+                
+                try:
+                    os.remove(log_file)
+                except Exception as e:
+                    logger.warning(f"Failed to remove old log file {log_file}: {str(e)}")
+        
+        # Clear in-memory logs
+        self.agent_logs = {}
+        logger.info(f"Agent logs reset. Previous logs backed up to {backup_dir if log_files else 'No files to backup'}")
+        
+    def log_agent_interaction(self, agent_id: str, prompt: str, response: str, 
+                             action_type: str = None, action_param: str = None):
+        """Log an interaction with an agent"""
+        # Initialize agent log if not exists
+        if agent_id not in self.agent_logs:
+            self.agent_logs[agent_id] = []
+            
+        # Create log entry
+        log_entry = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "prompt": prompt,
+            "response": response
+        }
+        
+        if action_type:
+            log_entry["action_type"] = action_type
+            
+        if action_param:
+            log_entry["action_param"] = action_param
+            
+        # Add to in-memory log
+        self.agent_logs[agent_id].append(log_entry)
+        
+        # Write to file
+        self._write_agent_log(agent_id)
+        
+        logger.debug(f"Logged interaction for agent {agent_id}")
+        
+    def _write_agent_log(self, agent_id: str):
+        """Write an agent's log to file"""
+        log_file = os.path.join(self.logs_dir, f"agent_{agent_id}.json")
+        try:
+            with open(log_file, 'w') as f:
+                json.dump(self.agent_logs[agent_id], f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to write log for agent {agent_id}: {str(e)}")
+            
+    def export_all_logs(self):
+        """Export all agent logs to a combined file"""
+        combined_log_file = os.path.join(self.logs_dir, "all_agents_combined.json")
+        try:
+            with open(combined_log_file, 'w') as f:
+                json.dump(self.agent_logs, f, indent=2)
+            logger.info(f"Exported combined agent logs to {combined_log_file}")
+            return combined_log_file
+        except Exception as e:
+            logger.error(f"Failed to export combined logs: {str(e)}")
+            return None
 
 # Get API key from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -57,6 +148,7 @@ unity_client = UnityAPIClient(
 session_manager = AgentSessionManager(api_key=OPENAI_API_KEY)
 action_dispatcher = ActionDispatcher(unity_client)
 environment_state = EnvironmentState()
+agent_logger = AgentLogger()  # Initialize agent logger
 
 # Background tasks
 environment_poll_task = None
@@ -146,6 +238,15 @@ async def generate_agent_decision(request: GenerateRequest):
         
         # Log the response and action
         logger.info(f"Generated response for agent {request.agent_id}: action_type={parsed_action['action_type']}, action_param={parsed_action['action_param']}")
+        
+        # Log detailed agent interaction for analysis
+        agent_logger.log_agent_interaction(
+            agent_id=request.agent_id,
+            prompt=context_to_use,
+            response=llm_response["text"],
+            action_type=parsed_action["action_type"],
+            action_param=parsed_action["action_param"]
+        )
         
         return GenerateResponse(
             agent_id=request.agent_id,
@@ -339,15 +440,62 @@ async def export_logs(background_tasks: BackgroundTasks):
         # Save to file (in background)
         background_tasks.add_task(session_manager.save_logs_to_file, "agent_logs.json")
         
+        # Also export agent interaction logs
+        log_file = agent_logger.export_all_logs()
+        
         return {
             "status": "success", 
-            "message": "Logs exported to agent_logs.json",
-            "agent_count": len(session_logs)
+            "message": "Logs exported to agent_logs.json and agent interactions exported to all_agents_combined.json",
+            "agent_count": len(session_logs),
+            "interaction_logs": log_file
         }
     
     except Exception as e:
         logger.error(f"Error exporting logs: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error exporting logs: {str(e)}")
+
+@app.get("/logs/agent/{agent_id}")
+async def get_agent_logs(agent_id: str):
+    """
+    Get logs for a specific agent.
+    """
+    try:
+        if agent_id not in agent_logger.agent_logs:
+            return {"status": "not_found", "message": f"No logs found for agent {agent_id}"}
+        
+        return {
+            "status": "success",
+            "agent_id": agent_id,
+            "logs": agent_logger.agent_logs[agent_id],
+            "interaction_count": len(agent_logger.agent_logs[agent_id])
+        }
+    
+    except Exception as e:
+        logger.error(f"Error retrieving agent logs: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error retrieving agent logs: {str(e)}")
+
+@app.get("/logs/agents")
+async def list_logged_agents():
+    """
+    List all agents that have logs.
+    """
+    try:
+        agent_ids = list(agent_logger.agent_logs.keys())
+        
+        agent_stats = {
+            agent_id: len(agent_logger.agent_logs[agent_id]) 
+            for agent_id in agent_ids
+        }
+        
+        return {
+            "status": "success",
+            "agent_count": len(agent_ids),
+            "agents": agent_stats
+        }
+    
+    except Exception as e:
+        logger.error(f"Error listing agent logs: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error listing agent logs: {str(e)}")
 
 # Environment polling task
 async def poll_environment():
@@ -379,6 +527,10 @@ async def poll_environment():
 @app.on_event("startup")
 async def startup_event():
     global environment_poll_task
+    
+    # Reset agent logs
+    logger.info("Resetting agent logs...")
+    agent_logger.reset_logs()
     
     # Start agent session cleanup loop
     await session_manager.start_background_tasks()
