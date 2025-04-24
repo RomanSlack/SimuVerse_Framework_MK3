@@ -64,7 +64,7 @@ class AgentProfileManager:
             "Agent_B": {
                 "personality": "Practical and resourceful. You are an engineer responsible for infrastructure.",
                 "task": "Check on critical systems throughout the colony.",
-                "default_location": "cantina"
+                "default_location": "home"
             }
         }
     
