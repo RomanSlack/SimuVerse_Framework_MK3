@@ -4,6 +4,13 @@ from typing import Dict, Any, Tuple, Optional, List
 
 logger = logging.getLogger(__name__)
 
+# Import dashboard integration (will be ignored if not available)
+try:
+    import dashboard_integration
+    HAS_DASHBOARD = True
+except ImportError:
+    HAS_DASHBOARD = False
+
 class ActionDispatcher:
     """
     Responsible for parsing LLM outputs into actionable commands and 
@@ -93,6 +100,27 @@ class ActionDispatcher:
         agent_id = parsed_action["agent_id"]
         action_type = parsed_action["action_type"]
         action_param = parsed_action["action_param"]
+        
+        # Update dashboard with agent message if it's a speech or conversation action
+        if HAS_DASHBOARD:
+            try:
+                # Record action in dashboard for speak actions
+                if action_type == "speak":
+                    dashboard_integration.record_agent_message(
+                        agent_id, 
+                        action_param, 
+                        is_from_agent=True
+                    )
+                
+                # Update agent state in dashboard
+                state_update = {
+                    "status": f"Performing action: {action_type}",
+                    "action_type": action_type,
+                    "action_param": action_param
+                }
+                dashboard_integration.update_agent_state(agent_id, state_update)
+            except Exception as e:
+                logger.warning(f"Error updating dashboard: {e}")
         
         # Check for conflicting actions and resolve based on priority
         if agent_id in self.pending_actions:

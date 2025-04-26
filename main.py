@@ -866,6 +866,47 @@ async def shutdown_event():
     logger.info("SimuVerse backend shutdown")
 
 if __name__ == "__main__":
+    # Initialize dashboard in a separate thread
+    try:
+        # First try using the regular dashboard
+        try:
+            import dashboard_integration
+            dashboard_integration.init_dashboard(host='0.0.0.0', port=5001)
+            logger.info("Dashboard started on http://localhost:5001")
+        except ImportError as e:
+            logger.warning(f"Standard dashboard failed to import: {e}")
+            raise e
+        except Exception as e:
+            # If regular dashboard fails, try fallback version
+            logger.warning(f"Standard dashboard initialization failed: {e}")
+            logger.info("Attempting to start fallback dashboard...")
+            
+            # Import the fallback dashboard instead
+            import importlib.util
+            import sys
+            
+            # Dynamically import the fallback dashboard
+            spec = importlib.util.spec_from_file_location(
+                "dashboard_fallback", 
+                os.path.join(os.path.dirname(__file__), "dashboard_fallback.py")
+            )
+            fallback = importlib.util.module_from_spec(spec)
+            sys.modules["dashboard_fallback"] = fallback
+            spec.loader.exec_module(fallback)
+            
+            # Start fallback dashboard
+            import threading
+            thread = threading.Thread(
+                target=fallback.run_dashboard,
+                args=('0.0.0.0', 5001, False),
+                daemon=True
+            )
+            thread.start()
+            logger.info("Fallback dashboard started on http://localhost:5001")
+    except Exception as e:
+        logger.warning(f"All dashboard initialization attempts failed: {e}")
+    
+    # Start the main backend
     uvicorn.run(
         "main:app", 
         host=os.getenv("HOST", "127.0.0.1"),

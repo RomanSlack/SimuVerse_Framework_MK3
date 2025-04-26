@@ -7,6 +7,13 @@ import copy
 
 logger = logging.getLogger(__name__)
 
+# Import dashboard integration (will be ignored if not available)
+try:
+    import dashboard_integration
+    HAS_DASHBOARD = True
+except ImportError:
+    HAS_DASHBOARD = False
+
 class EnvironmentState:
     """
     Maintains a cached representation of the Unity environment state.
@@ -41,8 +48,25 @@ class EnvironmentState:
             state_data: New state data for the agent
         """
         with self._lock:
-            self.agent_states[agent_id] = state_data
+            # If existing state, update instead of replacing
+            if agent_id in self.agent_states:
+                # Make a copy of the existing state
+                updated_state = copy.deepcopy(self.agent_states[agent_id])
+                # Update with new data
+                updated_state.update(state_data)
+                self.agent_states[agent_id] = updated_state
+            else:
+                # New agent state
+                self.agent_states[agent_id] = state_data
+                
             self.last_update_time[f"agent_{agent_id}"] = time.time()
+            
+            # Update dashboard if available
+            if HAS_DASHBOARD:
+                try:
+                    dashboard_integration.update_agent_state(agent_id, self.agent_states[agent_id])
+                except Exception as e:
+                    logger.warning(f"Failed to update dashboard with agent state: {e}")
     
     def update_agent_nearby_objects(self, agent_id: str, objects_data: List[Dict[str, Any]]) -> None:
         """

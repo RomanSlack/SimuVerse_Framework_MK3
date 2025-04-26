@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimuExo Agent Dashboard</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="app-title">SimuExo</h1>
+                <p class="app-subtitle">Agent Dashboard</p>
+            </div>
+            <div class="simulation-status">
+                <div class="status-indicator" id="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Offline</span>
+                </div>
+                <div class="status-details">
+                    <p>Agents: <span id="agent-count">0</span></p>
+                    <p>Started: <span id="started-time">-</span></p>
+                    <p>Last update: <span id="last-update">-</span></p>
+                </div>
+            </div>
+            <div class="agent-list-header">
+                <h2>Agents</h2>
+                <div class="filter-container">
+                    <input type="text" id="agent-filter" placeholder="Filter agents...">
+                    <button id="clear-filter" class="icon-button">
+                        <span class="material-icons">clear</span>
+                    </button>
+                </div>
+            </div>
+            <ul class="agent-list" id="agent-list">
+                <!-- Agents will be populated here dynamically -->
+                <li class="empty-list">No agents connected</li>
+            </ul>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Overview Section -->
+            <div class="overview-section" id="overview-section">
+                <div class="section-header">
+                    <h2>SimuExo Agents Overview</h2>
+                </div>
+                <div class="overview-grid" id="agents-grid">
+                    <!-- Agent cards will be populated here dynamically -->
+                    <div class="empty-state">
+                        <div class="empty-icon">
+                            <span class="material-icons">group_off</span>
+                        </div>
+                        <h3>No Agents Connected</h3>
+                        <p>Waiting for agents to connect to the simulation...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Agent Detail Section (hidden by default) -->
+            <div class="agent-detail-section hidden" id="agent-detail-section">
+                <div class="section-header">
+                    <button class="back-button" id="back-to-overview">
+                        <span class="material-icons">arrow_back</span>
+                        Back to Overview
+                    </button>
+                    <h2 id="agent-detail-title">Agent Detail</h2>
+                </div>
+                <div class="agent-detail-container">
+                    <div class="agent-info-panel">
+                        <div class="agent-avatar">
+                            <div class="avatar-placeholder">
+                                <span class="material-icons">android</span>
+                            </div>
+                        </div>
+                        <div class="agent-meta">
+                            <h3 id="agent-detail-id">Agent_ID</h3>
+                            <div class="agent-status">
+                                <span class="status-dot active"></span>
+                                <span id="agent-detail-status">Status</span>
+                            </div>
+                            <div class="agent-location">
+                                <span class="material-icons">place</span>
+                                <span id="agent-detail-location">Location</span>
+                            </div>
+                        </div>
+                        <div class="agent-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Action</span>
+                                <span class="stat-value" id="agent-detail-action">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Position</span>
+                                <span class="stat-value" id="agent-detail-position">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Last Update</span>
+                                <span class="stat-value" id="agent-detail-update">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="agent-interaction-panel">
+                        <div class="tabs">
+                            <button class="tab-button active" data-tab="chat">Chat</button>
+                            <button class="tab-button" data-tab="history">History</button>
+                            <button class="tab-button" data-tab="state">Raw State</button>
+                        </div>
+                        <div class="tab-content">
+                            <div class="tab-pane active" id="chat-tab">
+                                <div class="chat-container">
+                                    <div class="chat-messages" id="chat-messages">
+                                        <!-- Chat messages will be populated here -->
+                                        <div class="chat-empty-state">
+                                            <p>No messages yet. Send a message to start chatting with this agent.</p>
+                                        </div>
+                                    </div>
+                                    <div class="chat-input-container">
+                                        <input type="text" id="chat-input" placeholder="Type a message...">
+                                        <button id="send-message" class="send-button">
+                                            <span class="material-icons">send</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="tab-pane" id="history-tab">
+                                <div class="history-container">
+                                    <div class="history-list" id="history-list">
+                                        <!-- Agent history will be populated here -->
+                                        <div class="history-empty-state">
+                                            <p>No history available for this agent.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="tab-pane" id="state-tab">
+                                <div class="raw-state-container">
+                                    <pre id="raw-state-content">No state data available.</pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification System -->
+    <div class="notification-container" id="notification-container"></div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
