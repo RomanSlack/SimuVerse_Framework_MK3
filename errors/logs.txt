@@ -8,107 +8,114 @@ INFO:dashboard_integration:SimuVerse Dashboard started on http://0.0.0.0:5001
 INFO:__main__:Dashboard started on http://localhost:5001
 INFO:simuverse_dashboard:Starting SimuVerse Dashboard on http://0.0.0.0:5001
 INFO:AgentProfileManager:Loaded 5 agent profiles from /home/roman-slack/SimuExoV1/SimuVerse_Backend/agent_logs/../agent_profiles.json
-INFO:     Started server process [98055]
+INFO:     Started server process [99134]
 INFO:     Waiting for application startup.
 INFO:main:Resetting agent logs...
-INFO:main:Agent logs reset. Previous logs backed up to /home/roman-slack/SimuExoV1/SimuVerse_Backend/agent_logs/backup_20250425_232027
+INFO:main:Agent logs reset. Previous logs backed up to /home/roman-slack/SimuExoV1/SimuVerse_Backend/agent_logs/backup_20250425_232616
 INFO:AgentSessionManager:Started session manager background tasks
 INFO:main:SimuVerse backend started
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:3000 (Press CTRL+C to quit)
 WARNING:UnityAPIClient:Connection check failed: Cannot connect to host localhost:8080 ssl:default [Connect call failed ('127.0.0.1', 8080)]
-INFO:     127.0.0.1:39816 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:39816 - "POST /profiles/Agent_A HTTP/1.1" 200 OK
-INFO:     127.0.0.1:39816 - "POST /profiles/Agent_B HTTP/1.1" 200 OK
-INFO:     127.0.0.1:39816 - "POST /profiles/Agent_C HTTP/1.1" 200 OK
-INFO:     127.0.0.1:39816 - "POST /profiles/Agent_D HTTP/1.1" 200 OK
+WARNING:UnityAPIClient:Connection check failed: Cannot connect to host localhost:8080 ssl:default [Connect call failed ('127.0.0.1', 8080)]
+WARNING:UnityAPIClient:Connection check failed: Cannot connect to host localhost:8080 ssl:default [Connect call failed ('127.0.0.1', 8080)]
+INFO:     127.0.0.1:49864 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /profiles/Agent_A HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /profiles/Agent_B HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /profiles/Agent_C HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /profiles/Agent_D HTTP/1.1" 200 OK
 INFO:main:Priming specific agents: ['Agent_A', 'Agent_B', 'Agent_C', 'Agent_D']
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:38562 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38896 - "POST /env/update HTTP/1.1" 200 OK
 INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 INFO:main:Agent Agent_A primed successfully
 INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 INFO:main:Agent Agent_B primed successfully
 INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 INFO:main:Agent Agent_C primed successfully
+INFO:main:Priming all agents: ['Agent_B', 'Agent_A', 'Agent_E', 'Agent_D', 'Agent_C']
 INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 INFO:main:Agent Agent_D primed successfully
-INFO:     127.0.0.1:39816 - "POST /agents/prime HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /agents/prime HTTP/1.1" 200 OK
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:39816 - "POST /env/update HTTP/1.1" 200 OK
-INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
-INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
-INFO:main:Priming all agents: ['Agent_D', 'Agent_C', 'Agent_B', 'Agent_A', 'Agent_E']
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
 INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 INFO:main:Agent Agent_E primed successfully
-INFO:     127.0.0.1:51178 - "POST /agents/prime HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38896 - "POST /agents/prime HTTP/1.1" 200 OK
 INFO:main:Received generate request for agent: Agent_A
 INFO:main:Using provided user_input for agent Agent_A
+INFO:main:Received generate request for agent: Agent_B
+INFO:main:Using provided user_input for agent Agent_B
 INFO:main:Received generate request for agent: Agent_D
 INFO:main:Using provided user_input for agent Agent_D
 INFO:main:Received generate request for agent: Agent_C
 INFO:main:Using provided user_input for agent Agent_C
-INFO:main:Received generate request for agent: Agent_B
-INFO:main:Using provided user_input for agent Agent_B
-INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
-INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51226 - "POST /env/update HTTP/1.1" 200 OK
 INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 INFO:main:Generated response for agent Agent_B: action_type=move, action_param=electricalroom
-INFO:     127.0.0.1:51184 - "POST /generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38896 - "POST /generate HTTP/1.1" 200 OK
 ERROR:ActionDispatcher:Error dispatching action move for agent Agent_B: Unity API is not reachable
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51184 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38896 - "POST /env/update HTTP/1.1" 200 OK
 INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-INFO:main:Generated response for agent Agent_A: action_type=move, action_param=plantfarm
-INFO:     127.0.0.1:51178 - "POST /generate HTTP/1.1" 200 OK
-INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:main:Generated response for agent Agent_A: action_type=move, action_param=cantina
+INFO:     127.0.0.1:49864 - "POST /generate HTTP/1.1" 200 OK
 ERROR:ActionDispatcher:Error dispatching action move for agent Agent_A: Unity API is not reachable
-INFO:main:Generated response for agent Agent_C: action_type=move, action_param=electricalroom
-INFO:     127.0.0.1:51198 - "POST /generate HTTP/1.1" 200 OK
-ERROR:ActionDispatcher:Error dispatching action move for agent Agent_C: Unity API is not reachable
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
-INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
-INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
 INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 INFO:main:Generated response for agent Agent_D: action_type=move, action_param=cantina
-INFO:     127.0.0.1:51210 - "POST /generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38910 - "POST /generate HTTP/1.1" 200 OK
 ERROR:ActionDispatcher:Error dispatching action move for agent Agent_D: Unity API is not reachable
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
+INFO:httpx:HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+INFO:main:Generated response for agent Agent_C: action_type=converse, action_param=Agent_D
+INFO:     127.0.0.1:38908 - "POST /generate HTTP/1.1" 200 OK
+ERROR:ActionDispatcher:Error dispatching action converse for agent Agent_C: Unity API is not reachable
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38908 - "POST /env/update HTTP/1.1" 200 OK
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
 INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
 INFO:main:Environment state updated successfully. Now tracking 5 agents.
-INFO:     127.0.0.1:51178 - "POST /env/update HTTP/1.1" 200 OK
-
+INFO:     127.0.0.1:49864 - "POST /env/update HTTP/1.1" 200 OK
+INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
+INFO:main:Environment state updated successfully. Now tracking 5 agents.
+INFO:     127.0.0.1:56248 - "POST /env/update HTTP/1.1" 200 OK
+INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
+INFO:main:Environment state updated successfully. Now tracking 5 agents.
+INFO:     127.0.0.1:52088 - "POST /env/update HTTP/1.1" 200 OK
+INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
+INFO:main:Environment state updated successfully. Now tracking 5 agents.
+INFO:     127.0.0.1:52090 - "POST /env/update HTTP/1.1" 200 OK
+INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
+INFO:main:Environment state updated successfully. Now tracking 5 agents.
+INFO:     127.0.0.1:37344 - "POST /env/update HTTP/1.1" 200 OK
+INFO:main:Received environment update with 5 agents, 0 locations, 0 objects
+INFO:main:Environment state updated successfully. Now tracking 5 agents.
+INFO:     127.0.0.1:37356 - "POST /env/update HTTP/1.1" 200 OK
