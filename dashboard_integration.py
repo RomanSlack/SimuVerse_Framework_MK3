@@ -315,6 +315,110 @@ SPEAK: Hello! I'm ready to chat. How can I help you?"
     except Exception as e:
         logger.error(f"Error priming agent {agent_id} for chat: {e}")
 
+def prime_agent_for_conversation(agent_id, target_agent_id):
+    """
+    Send a priming message to prepare an agent for conversation with another agent.
+    This ensures the agent is ready to have a meaningful conversation with the target agent.
+    
+    Args:
+        agent_id: The ID of the agent to prime
+        target_agent_id: The ID of the agent they will converse with
+    """
+    logger.info(f"Priming agent {agent_id} for conversation with {target_agent_id}")
+    
+    try:
+        import requests
+        from EnvironmentState import EnvironmentState
+        
+        # Get the current environment state
+        env = EnvironmentState()
+        
+        # Get the location of the other agent
+        target_location = "unknown"
+        if target_agent_id in env.agent_states and "location" in env.agent_states[target_agent_id]:
+            target_location = env.agent_states[target_agent_id]["location"]
+        
+        # Get any task the target agent might be on
+        target_task = "unknown"
+        if target_agent_id in env.agent_states and "status" in env.agent_states[target_agent_id]:
+            target_task = env.agent_states[target_agent_id]["status"]
+        
+        # Create a conversation-focused system prompt
+        convo_system_prompt = f"""
+You are now in CONVERSATION MODE with {target_agent_id}, who is currently at {target_location} and is {target_task}.
+This is a special interaction where you should focus entirely on having a meaningful exchange.
+
+In your response:
+1. Be engaging and responsive to what the other agent says
+2. Ask relevant questions based on their role or current task
+3. Share information that might be helpful to them
+4. Always use the SPEAK: action format for your responses
+
+Remember: This conversation has a maximum of 3 rounds before you both need to return to your tasks.
+Make each exchange count and be purposeful in your conversation!
+
+End your response with: SPEAK: [Your message to {target_agent_id}]
+"""
+        
+        # Create payload for the API call
+        payload = {
+            "agent_id": agent_id,
+            "user_input": f"[Conversation with {target_agent_id} initiated]",
+            "system_prompt": convo_system_prompt
+        }
+        
+        # Make the API call silently - this just primes the agent
+        try:
+            requests.post('http://localhost:3000/generate', json=payload)
+            logger.info(f"Successfully primed agent {agent_id} for conversation with {target_agent_id}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to prime agent {agent_id} for conversation: {e}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error priming agent {agent_id} for conversation: {e}")
+        return False
+
+def process_conversation_message(sender_id, receiver_id, message):
+    """
+    Process a message sent as part of an agent-to-agent conversation.
+    This ensures the message is delivered to the target agent and displayed on the dashboard.
+    
+    Args:
+        sender_id: The ID of the agent sending the message
+        receiver_id: The ID of the agent receiving the message
+        message: The content of the message
+    
+    Returns:
+        Success status as boolean
+    """
+    logger.info(f"Processing conversation message from {sender_id} to {receiver_id}")
+    
+    try:
+        # Record the message in the dashboard for both agents
+        if dashboard_running:
+            # Record in sender's history (outgoing message)
+            record_agent_message(
+                sender_id,
+                f"[To {receiver_id}] {message}",
+                is_from_agent=True
+            )
+            
+            # Record in receiver's history (incoming message)
+            record_agent_message(
+                receiver_id,
+                f"[From {sender_id}] {message}",
+                is_from_agent=False
+            )
+        
+        # Create a message for the receiver that will trigger their response
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing conversation message: {e}")
+        return False
+
 # Function to update simulation status
 def update_simulation_status(running=True, agent_count=None):
     """

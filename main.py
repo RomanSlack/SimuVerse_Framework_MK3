@@ -18,6 +18,7 @@ from UnityAPIClient import UnityAPIClient
 from ActionDispatcher import ActionDispatcher
 from EnvironmentState import EnvironmentState
 from AgentProfileManager import AgentProfileManager
+from conversation_manager import ConversationManager
 import dotenv
 dotenv.load_dotenv()
 # Load environment variables
@@ -153,9 +154,16 @@ agent_logger = AgentLogger()  # Initialize agent logger
 agent_profiles = AgentProfileManager(
     profiles_path=os.path.join(AGENT_LOGS_DIR, "..", "agent_profiles.json")
 )
+# Initialize conversation manager with max 3 rounds
+conversation_manager = ConversationManager(session_manager=session_manager, max_rounds=3)
+
+# Import and include conversation routes
+from conversation_routes import router as conversation_router
+app.include_router(conversation_router)
 
 # Background tasks
 environment_poll_task = None
+conversation_cleanup_task = None
 
 # Request/Response Models
 class GenerateRequest(BaseModel):
@@ -833,7 +841,7 @@ async def poll_environment():
 
 @app.on_event("startup")
 async def startup_event():
-    global environment_poll_task
+    global environment_poll_task, conversation_cleanup_task
     
     # Reset agent logs
     logger.info("Resetting agent logs...")
@@ -845,7 +853,26 @@ async def startup_event():
     # Start environment polling task
     environment_poll_task = asyncio.create_task(poll_environment())
     
+    # Start conversation cleanup task
+    conversation_cleanup_task = asyncio.create_task(cleanup_stale_conversations())
+    
     logger.info("SimuVerse backend started")
+
+async def cleanup_stale_conversations():
+    """
+    Periodically clean up stale conversations.
+    """
+    cleanup_interval = 60  # Check every minute
+    
+    while True:
+        try:
+            await conversation_manager.cleanup_stale_conversations(max_idle_time=300)  # 5 minutes
+            logger.debug("Cleaned up stale conversations")
+        except Exception as e:
+            logger.error(f"Error cleaning up conversations: {e}")
+        
+        # Wait before next cleanup
+        await asyncio.sleep(cleanup_interval)
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -854,6 +881,14 @@ async def shutdown_event():
         environment_poll_task.cancel()
         try:
             await environment_poll_task
+        except asyncio.CancelledError:
+            pass
+    
+    # Cancel conversation cleanup task
+    if conversation_cleanup_task:
+        conversation_cleanup_task.cancel()
+        try:
+            await conversation_cleanup_task
         except asyncio.CancelledError:
             pass
     

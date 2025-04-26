@@ -188,7 +188,35 @@ class ActionDispatcher:
             elif action_type == "speak":
                 result = await self.unity_client.agent_speak(agent_id, action_param)
             elif action_type == "converse":
-                result = await self.unity_client.initiate_conversation(agent_id, action_param)
+                # Handle conversation via the ConversationManager instead of just Unity
+                try:
+                    # Import ConversationManager
+                    import sys
+                    # Get reference to the main module where conversation_manager is initialized
+                    main_module = sys.modules['__main__']
+                    if hasattr(main_module, 'conversation_manager'):
+                        # Start a new conversation between agents
+                        conversation_result = await main_module.conversation_manager.start_conversation(agent_id, action_param)
+                        logger.info(f"Started conversation via ConversationManager: {conversation_result}")
+                        
+                        # Ensure this is still forwarded to Unity for UI updates
+                        unity_result = await self.unity_client.initiate_conversation(agent_id, action_param)
+                        
+                        # Return combined result
+                        result = {
+                            "status": "success",
+                            "message": f"Conversation initiated with {action_param}",
+                            "conversation_id": conversation_result.get("conversation_id"),
+                            "unity_result": unity_result
+                        }
+                    else:
+                        # Fall back to old behavior if conversation_manager not found
+                        result = await self.unity_client.initiate_conversation(agent_id, action_param)
+                        logger.warning("ConversationManager not found in main module, falling back to Unity-only conversation")
+                except Exception as conv_error:
+                    logger.error(f"Error starting conversation: {conv_error}")
+                    # Fall back to old behavior
+                    result = await self.unity_client.initiate_conversation(agent_id, action_param)
             elif action_type == "nothing":
                 result = {"status": "success", "message": "Agent chose to do nothing"}
             else:
