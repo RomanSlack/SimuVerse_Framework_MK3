@@ -254,12 +254,17 @@ async def generate_agent_decision(request: GenerateRequest):
         # Check for any pending conversation messages for this agent
         conversation_messages = []
         nearby_speech_messages = []
+        directed_speech_messages = []  # Messages where agent is directly mentioned
         directed_messages = []
         if request.agent_id in main_agent_message_queue and main_agent_message_queue[request.agent_id]:
             for msg in main_agent_message_queue[request.agent_id]:
                 if msg.get("is_nearby_speech", False):
-                    # Message from nearby agent speaking (broadcast)
-                    nearby_speech_messages.append(f"[{msg['from']} says] {msg['content']}")
+                    if msg.get("is_directed_speech", False):
+                        # Speech that directly mentions this agent
+                        directed_speech_messages.append(f"[{msg['from']} says to you] {msg['content']}")
+                    else:
+                        # Regular message from nearby agent speaking (broadcast)
+                        nearby_speech_messages.append(f"[{msg['from']} says] {msg['content']}")
                 elif msg.get("is_directed", False):
                     # Message specifically directed at this agent (from CONVERSE action)
                     directed_messages.append(f"[{msg['from']} to you] {msg['content']}")
@@ -275,21 +280,46 @@ async def generate_agent_decision(request: GenerateRequest):
                 logger.info(f"Delivering {len(conversation_messages)} conversation messages to {request.agent_id}")
             if nearby_speech_messages:
                 logger.info(f"Delivering {len(nearby_speech_messages)} nearby speech messages to {request.agent_id}")
+            if directed_speech_messages:
+                logger.info(f"Delivering {len(directed_speech_messages)} directed speech messages to {request.agent_id}")
             if directed_messages:
                 logger.info(f"Delivering {len(directed_messages)} directed messages to {request.agent_id}")
+
+            # For any messages at all, add a special conversation context to help agents have real conversations
+            if conversation_messages or nearby_speech_messages or directed_speech_messages or directed_messages:
+                conversation_guidance = """
+CONVERSATION GUIDANCE:
+When replying to other agents, please follow these guidelines:
+1. Respond directly to questions you're asked
+2. Share relevant information about your tasks or observations
+3. Ask follow-up questions to keep the conversation going
+4. Acknowledge what the other agent has said before adding new information
+5. Be concise but informative in your responses
+
+Use SPEAK: to respond to any messages above.
+"""
+                env_context += f"\n{conversation_guidance}"
             
-            # Add conversation messages if any
-            if conversation_messages:
-                env_context += "\n\nYou have received direct messages from other agents. Please respond to them using SPEAK:"
-                for msg in conversation_messages:
-                    env_context += f"\n{msg}"
-            
-            # Add directed messages if any (high priority)
+            # Add high priority directed messages first
             if directed_messages:
                 env_context += "\n\nYou have received messages directed specifically to you:"
                 for msg in directed_messages:
                     env_context += f"\n{msg}"
                 env_context += "\n\nPlease respond to these agents using SPEAK: <your response>"
+            
+            # Add direct speech next (where agent was mentioned by name)
+            if directed_speech_messages:
+                env_context += "\n\nYou hear nearby agents speaking directly to you:"
+                for msg in directed_speech_messages:
+                    env_context += f"\n{msg}"
+                env_context += "\n\nPlease respond to them using SPEAK: <your response>"
+            
+            # Add conversation messages 
+            if conversation_messages:
+                env_context += "\n\nYou have received direct messages from other agents:"
+                for msg in conversation_messages:
+                    env_context += f"\n{msg}"
+                env_context += "\n\nPlease respond using SPEAK: <your response>"
             
             # Add nearby speech messages if any
             if nearby_speech_messages:
@@ -316,11 +346,13 @@ async def generate_agent_decision(request: GenerateRequest):
         # Parse the response for actions
         parsed_action = action_dispatcher.parse_llm_output(request.agent_id, llm_response["text"])
         
-        # If the agent has received conversation messages and responds with SPEAK,
-        # we need to route that as a conversation reply, not just a regular speech action
-        if conversation_messages and parsed_action["action_type"] == "speak":
+        # If the agent responds with SPEAK to any message,
+        # we need to ensure it's routed as a proper reply
+        agent_has_messages = bool(conversation_messages or nearby_speech_messages or directed_speech_messages or directed_messages)
+        
+        if agent_has_messages and parsed_action["action_type"] == "speak":
+            # Add response to conversation manager if needed
             try:
-                # Find the conversation this agent is participating in
                 if hasattr(conversation_manager, "is_agent_in_conversation") and conversation_manager.is_agent_in_conversation(request.agent_id):
                     # Get the conversation
                     conversation = conversation_manager.get_agent_conversation(request.agent_id)
@@ -341,6 +373,57 @@ async def generate_agent_decision(request: GenerateRequest):
                             logger.info(f"Ended conversation {conversation['id']} after {conversation_manager.max_rounds} rounds")
             except Exception as e:
                 logger.error(f"Error handling conversation reply: {e}")
+                
+            # Also handle explicit mentions of other agents in the response
+            try:
+                # Extract any agent IDs mentioned in the response
+                from EnvironmentState import EnvironmentState
+                env = EnvironmentState()
+                
+                # Get the agent's location
+                agent_location = "unknown"
+                if request.agent_id in env.agent_states and "location" in env.agent_states[request.agent_id]:
+                    agent_location = env.agent_states[request.agent_id]["location"]
+                
+                # Find agents mentioned by name in the SPEAK response
+                mentioned_agents = []
+                for other_id in env.agent_states:
+                    if other_id != request.agent_id and other_id in parsed_action["action_param"]:
+                        mentioned_agents.append(other_id)
+                
+                # If specific agents are mentioned, prioritize sending to them even if not in same location
+                for mentioned_agent in mentioned_agents:
+                    # Add a special directed message
+                    if mentioned_agent not in main_agent_message_queue:
+                        main_agent_message_queue[mentioned_agent] = []
+                    
+                    main_agent_message_queue[mentioned_agent].append({
+                        "from": request.agent_id,
+                        "content": parsed_action["action_param"],
+                        "is_directed": True
+                    })
+                    
+                    logger.info(f"Added directed mention from {request.agent_id} to {mentioned_agent}")
+                    
+                    # Also record in dashboard
+                    import dashboard_integration
+                    if HAS_DASHBOARD:
+                        try:
+                            dashboard_integration.record_agent_message(
+                                request.agent_id,
+                                f"[To {mentioned_agent}] {parsed_action['action_param']}",
+                                is_from_agent=True
+                            )
+                            
+                            dashboard_integration.record_agent_message(
+                                mentioned_agent,
+                                f"[From {request.agent_id}] {parsed_action['action_param']}",
+                                is_from_agent=False
+                            )
+                        except Exception as dash_err:
+                            logger.error(f"Error recording directed mention in dashboard: {dash_err}")
+            except Exception as e:
+                logger.error(f"Error handling agent mentions in message: {e}")
                 
         # Dispatch the action (async)
         asyncio.create_task(action_dispatcher.dispatch_action(parsed_action))

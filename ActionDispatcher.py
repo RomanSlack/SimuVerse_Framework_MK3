@@ -219,6 +219,9 @@ class ActionDispatcher:
                         if other_id != agent_id and other_state.get("location") == agent_location:
                             nearby_agents.append(other_id)
                     
+                    # Import dashboard integration to record messages
+                    import dashboard_integration
+                    
                     # If there are nearby agents, queue the message for them
                     if nearby_agents:
                         from main import main_agent_message_queue
@@ -226,16 +229,63 @@ class ActionDispatcher:
                         # Format the message that other agents will see
                         broadcast_message = f"{agent_id} says: {action_param}"
                         
+                        # Record speech in dashboard for ALL nearby agents to ensure visibility
+                        for nearby_agent in nearby_agents:
+                            try:
+                                if HAS_DASHBOARD:
+                                    # Record message in both agents' history 
+                                    dashboard_integration.record_agent_message(
+                                        agent_id,
+                                        f"[To location: {agent_location}] {action_param}",
+                                        is_from_agent=True
+                                    )
+                                    
+                                    dashboard_integration.record_agent_message(
+                                        nearby_agent,
+                                        f"[At {agent_location}] {agent_id} said: {action_param}",
+                                        is_from_agent=False
+                                    )
+                            except Exception as dash_err:
+                                logger.error(f"Error recording speech in dashboard: {dash_err}")
+                        
+                        # Extract any potential direct references to agent names in the message
+                        directed_agent_names = []
+                        for nearby_agent in nearby_agents:
+                            # Check if agent name is directly mentioned in the message (common formats)
+                            name_patterns = [
+                                nearby_agent,  # Exact match
+                                f"@{nearby_agent}",  # @mention format 
+                                f"Hey {nearby_agent}",  # Hey/Hi format
+                                f"Hi {nearby_agent}",
+                                f"Hello {nearby_agent}",
+                                f"Dear {nearby_agent}"
+                            ]
+                            
+                            for pattern in name_patterns:
+                                if pattern.lower() in action_param.lower():
+                                    directed_agent_names.append(nearby_agent)
+                                    break
+                        
                         # Add to each nearby agent's message queue
                         for nearby_agent in nearby_agents:
                             if nearby_agent not in main_agent_message_queue:
                                 main_agent_message_queue[nearby_agent] = []
                             
-                            main_agent_message_queue[nearby_agent].append({
+                            # Check if this agent is directly referenced
+                            is_directed = nearby_agent in directed_agent_names
+                            
+                            message_data = {
                                 "from": agent_id,
                                 "content": action_param,
                                 "is_nearby_speech": True
-                            })
+                            }
+                            
+                            # If directly referenced, mark as such (gets special priority)
+                            if is_directed:
+                                message_data["is_directed_speech"] = True
+                                logger.info(f"Message from {agent_id} directly mentions {nearby_agent}")
+                            
+                            main_agent_message_queue[nearby_agent].append(message_data)
                             
                         logger.info(f"Queued speech message from {agent_id} for {len(nearby_agents)} nearby agents")
                         
