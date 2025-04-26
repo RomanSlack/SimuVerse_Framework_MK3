@@ -274,8 +274,21 @@ function renderAgentList() {
 
 // Update an agent list item with latest data
 function updateAgentListItem(listItem, agent) {
-    const status = agent.state?.status || 'Unknown';
-    const location = agent.state?.location || 'Unknown';
+    // Get status and location with fallbacks
+    const state = agent.state || {};
+    let status = state.status || 'Unknown';
+    let location = state.location || 'Unknown';
+    
+    // Use action information to improve display
+    if (state.action_type === 'move' && state.action_param) {
+        status = `Moving to ${state.action_param}`;
+        // If we're moving, show both current and target locations
+        if (location && location !== 'Unknown' && location !== state.action_param) {
+            location = `${location} → ${state.action_param}`;
+        } else {
+            location = state.action_param;
+        }
+    }
     
     listItem.innerHTML = `
         <div class="agent-list-item-header">
@@ -339,11 +352,22 @@ function renderAgentGrid() {
 // Update an agent card with latest data
 function updateAgentCard(card, agent) {
     const state = agent.state || {};
-    const status = state.status || 'Unknown';
-    const location = state.location || 'Unknown';
+    let status = state.status || 'Unknown';
+    let location = state.location || 'Unknown';
     const action = getAgentAction(state);
     const position = getPositionString(state);
     const lastUpdate = agent.last_update ? formatTime(new Date(agent.last_update)) : 'Unknown';
+    
+    // Use action information to improve display
+    if (state.action_type === 'move' && state.action_param) {
+        status = `Moving to ${state.action_param}`;
+        // If we're moving, show both current and target locations
+        if (location && location !== 'Unknown' && location !== state.action_param) {
+            location = `${location} → ${state.action_param}`;
+        } else {
+            location = state.action_param;
+        }
+    }
     
     card.innerHTML = `
         <div class="agent-card-header">
@@ -437,11 +461,24 @@ function displayAgentDetail(data) {
 // Update the agent detail view
 function updateAgentDetailView(agent) {
     const state = agent.state || {};
+    let status = state.status || 'Unknown';
+    let location = state.location || 'Unknown';
+    
+    // Use action information to improve display
+    if (state.action_type === 'move' && state.action_param) {
+        status = `Moving to ${state.action_param}`;
+        // If we're moving, show both current and target locations
+        if (location && location !== 'Unknown' && location !== state.action_param) {
+            location = `${location} → ${state.action_param}`;
+        } else {
+            location = state.action_param;
+        }
+    }
     
     agentDetailTitleEl.textContent = `Agent: ${agent.id}`;
     agentDetailIdEl.textContent = agent.id;
-    agentDetailStatusEl.textContent = state.status || 'Unknown';
-    agentDetailLocationEl.textContent = state.location || 'Unknown';
+    agentDetailStatusEl.textContent = status;
+    agentDetailLocationEl.textContent = location;
     agentDetailActionEl.textContent = getAgentAction(state);
     agentDetailPositionEl.textContent = getPositionString(state);
     agentDetailUpdateEl.textContent = agent.last_update ? 
@@ -698,6 +735,20 @@ function formatTime(date) {
 function getAgentAction(state) {
     if (!state) return 'Unknown';
     
+    // If we have an explicit action_type and action_param, use those first
+    if (state.action_type && state.action_param) {
+        if (state.action_type === 'move') {
+            return `Moving to ${state.action_param}`;
+        } else if (state.action_type === 'speak') {
+            return `Speaking: ${state.action_param.substring(0, 20)}${state.action_param.length > 20 ? '...' : ''}`;
+        } else if (state.action_type === 'converse') {
+            return `Talking to ${state.action_param}`;
+        } else if (state.action_type === 'nothing') {
+            return 'Waiting';
+        }
+    }
+    
+    // Fall back to standard behavior
     if (state.is_moving) {
         return `Moving to ${state.desired_location || 'destination'}`;
     }

@@ -150,6 +150,39 @@ class ActionDispatcher:
         result = {"status": "error", "message": "Unknown action type"}
         
         try:
+            # Update agent state in EnvironmentState even if Unity connection fails
+            try:
+                from EnvironmentState import EnvironmentState
+                env = EnvironmentState()
+                
+                # Update state based on action type
+                state_update = {
+                    "action_type": action_type,
+                    "action_param": action_param
+                }
+                
+                # For move actions, update the target location as the current location
+                if action_type == "move":
+                    state_update["location"] = action_param
+                    state_update["status"] = f"Moving to {action_param}"
+                elif action_type == "speak":
+                    state_update["status"] = "Speaking"
+                elif action_type == "converse":
+                    state_update["status"] = f"Conversing with {action_param}"
+                elif action_type == "nothing":
+                    state_update["status"] = "Idle"
+                
+                # Update environment state
+                env.update_agent_state(agent_id, state_update)
+                
+                # Ensure dashboard gets the latest state
+                if HAS_DASHBOARD:
+                    dashboard_integration.update_agent_state(agent_id, state_update)
+                    
+            except Exception as state_error:
+                logger.warning(f"Error updating agent state for {agent_id}: {state_error}")
+            
+            # Attempt to communicate with Unity
             if action_type == "move":
                 result = await self.unity_client.move_agent(agent_id, action_param)
             elif action_type == "speak":
@@ -168,6 +201,9 @@ class ActionDispatcher:
         except Exception as e:
             logger.error(f"Error dispatching action {action_type} for agent {agent_id}: {str(e)}")
             result = {"status": "error", "message": str(e)}
+            
+            # Even if Unity connection fails, we should still update the agent state
+            # for the dashboard to display (we already did this above)
         
         return result
     

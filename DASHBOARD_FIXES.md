@@ -9,6 +9,8 @@ We've fixed several dashboard issues:
 1. **Location Information**: The dashboard now correctly shows agent locations instead of "Unknown"
 2. **Chat Functionality**: Chat now properly connects to agent LLMs and avoids duplicate messages
 3. **History Logs**: The dashboard shows all agent history entries, not just the most recent ones
+4. **Unity Connection Issues**: Dashboard now shows agent actions and target locations even without Unity connection
+5. **Status Display**: Agent status now shows action and destination more clearly, including transition states
 
 These fixes are now part of the main codebase. If you're still experiencing issues, continue with the troubleshooting steps below.
 
