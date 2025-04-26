@@ -105,24 +105,9 @@ def send_message_to_agent(agent_id):
     success = send_to_backend(agent_id, message)
     
     if success:
-        # Add message to history
-        if agent_id not in agent_messages:
-            agent_messages[agent_id] = []
-        
-        agent_messages[agent_id].append({
-            "from": "human",
-            "content": message,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        # Emit update to connected clients
-        socketio.emit('agent_message', {
-            'agent_id': agent_id,
-            'message': message,
-            'from': 'human',
-            'timestamp': datetime.now().isoformat()
-        })
-        
+        # The integration now handles adding the message to the history and
+        # emitting the update to clients, so we don't need to do it here.
+        # This avoids the duplicate messages issue.
         return jsonify({"success": True})
     return jsonify({"error": "Failed to send message to agent"}), 500
 

@@ -11,6 +11,9 @@ We've fixed several dashboard issues:
 3. **History Logs**: The dashboard shows all agent history entries, not just the most recent ones
 4. **Unity Connection Issues**: Dashboard now shows agent actions and target locations even without Unity connection
 5. **Status Display**: Agent status now shows action and destination more clearly, including transition states
+6. **Chat with LLM**: Implemented real LLM-based chat using direct API calls
+7. **Focused Conversations**: Agents now pause exploration to focus on chat conversations
+8. **Contextual Responses**: Special system prompt ensures agents respond appropriately to user messages
 
 These fixes are now part of the main codebase. If you're still experiencing issues, continue with the troubleshooting steps below.
 

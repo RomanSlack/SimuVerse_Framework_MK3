@@ -136,55 +136,129 @@ def record_agent_message(agent_id, message, is_from_agent=True):
 
 def send_message_to_agent(agent_id, message):
     """
-    Process a message from the dashboard UI to an agent.
-    This should integrate with your existing mechanism to send messages to agents.
-    
-    Example integration in your ActionDispatcher:
-    
-    # In your dashboard.py, modify send_to_backend:
-    from dashboard_integration import process_dashboard_message
-    process_dashboard_message(agent_id, message)
+    Process a message from the dashboard UI to an agent by calling the direct API.
+    This avoids asyncio issues by using a direct HTTP request.
     """
-    # This implementation should be customized based on your existing code
-    # For example, you might route this to your LLM or agent handling system
-    
     logger.info(f"Processing message to agent {agent_id}: {message}")
     
     try:
-        # Import your existing modules here
-        from ActionDispatcher import ActionDispatcher
-        
-        # Connect to the actual backend session manager for the agent
-        from AgentSessionManager import AgentSessionManager
+        import requests
         from EnvironmentState import EnvironmentState
-        
-        env = EnvironmentState()
-        session_manager = AgentSessionManager()
-        
-        # Get environment context for the agent
-        env_context = env.get_formatted_context_string(agent_id)
-        
-        # Add user message to the context
-        context_to_use = f"{env_context}\n\nUser Input: {message}"
-        
-        # Generate a response from the LLM
-        response_future = session_manager.generate_response(agent_id, context_to_use)
-        
-        # Use asyncio to get the response
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        llm_response = loop.run_until_complete(response_future)
-        loop.close()
+        from ActionDispatcher import ActionDispatcher
         
         # Record the human message in the dashboard
         if dashboard_running and dashboard:
-            # Record the human message
             dashboard.record_agent_message(agent_id, message, is_from_agent=False)
+        
+        # Make a direct API call to generate endpoint (avoid asyncio issues)
+        try:
+            # Get the current environment state
+            env = EnvironmentState()
+            env_context = env.get_formatted_context_string(agent_id)
             
-            # Record the agent's response
-            if llm_response and "text" in llm_response:
-                dashboard.record_agent_message(agent_id, llm_response["text"], is_from_agent=True)
+            # Create a modified system prompt that pauses the agent's regular behavior
+            # and forces it to focus on the conversation
+            chat_system_prompt = """
+You are now in DIRECT CHAT MODE with a human user through the dashboard interface.
+IMPORTANT: While in this mode, DO NOT suggest moving to new locations or performing other colony tasks.
+Instead, focus entirely on having a conversation with the human.
+
+Guidelines for responding:
+1. ALWAYS use the SPEAK action to respond (not MOVE, CONVERSE, or NOTHING)
+2. Be helpful, informative, and engaging in your responses
+3. If asked about your status, location, or tasks, provide that information
+4. You can share observations about your environment and experiences
+5. Do not try to continue your exploration tasks until the conversation ends
+
+Format your response with a thoughtful reply followed by the SPEAK action:
+SPEAK: [Your message to the human]
+"""
+            
+            # Create payload for the API call
+            payload = {
+                "agent_id": agent_id,
+                "user_input": message,
+                "system_prompt": chat_system_prompt  # Override with conversation-focused prompt
+            }
+            
+            # Make the API call
+            response = requests.post('http://localhost:3000/generate', json=payload)
+            
+            if response.status_code == 200:
+                # Parse response
+                result = response.json()
+                
+                # Get the text response and action details
+                agent_response = result.get("text", "")
+                action_type = result.get("action_type", "")
+                action_param = result.get("action_param", "")
+                
+                # Force action to be "speak" if something else was chosen
+                if action_type != "speak":
+                    # Extract the last part as the message
+                    last_line = agent_response.strip().split('\n')[-1]
+                    if not last_line.startswith("SPEAK:"):
+                        # Generate a speaking action from the whole response
+                        action_type = "speak"
+                        action_param = f"[Dashboard chat] {agent_response}"
+                    else:
+                        # Extract just the speak part
+                        action_type = "speak"
+                        action_param = last_line.replace("SPEAK:", "").strip()
+                
+                # Record agent's response in the dashboard
+                if dashboard_running and dashboard:
+                    dashboard.record_agent_message(agent_id, agent_response, is_from_agent=True)
+                
+                # Update agent state with chat status but don't change location
+                state_update = {
+                    "action_type": "speak",  # Always force to speak for chat
+                    "action_param": action_param,
+                    "status": "Chatting with human"
+                }
+                
+                # Update state
+                env.update_agent_state(agent_id, state_update)
+                
+                # Ensure dashboard gets the update
+                if dashboard_running and dashboard:
+                    dashboard.update_agent_state(agent_id, state_update)
+                
+                return True
+            else:
+                logger.error(f"Error from generate API: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as api_error:
+            logger.error(f"Error calling generate API: {api_error}")
+            
+            # Fallback: Create a simple response
+            env = EnvironmentState()
+            location = "unknown"
+            if agent_id in env.agent_states and "location" in env.agent_states[agent_id]:
+                location = env.agent_states[agent_id]["location"]
+            
+            # Create a fallback response
+            agent_response = f"I'm sorry, I'm having trouble processing your message due to technical difficulties. I am currently at {location}. Let me try to assist you.\n\nSPEAK: I received your message but encountered technical difficulties. How else can I help you?"
+            
+            # Record agent's response in the dashboard
+            if dashboard_running and dashboard:
+                dashboard.record_agent_message(agent_id, agent_response, is_from_agent=True)
+            
+            # Update state with fallback action
+            state_update = {
+                "action_type": "speak",
+                "action_param": "I received your message but encountered technical difficulties. How else can I help you?",
+                "status": "Chatting with human"
+            }
+            
+            env.update_agent_state(agent_id, state_update)
+            
+            # Ensure dashboard gets the update
+            if dashboard_running and dashboard:
+                dashboard.update_agent_state(agent_id, state_update)
+            
+            return False
         
         return True
     except Exception as e:
