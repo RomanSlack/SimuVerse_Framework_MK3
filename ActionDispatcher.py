@@ -41,6 +41,9 @@ class ActionDispatcher:
             "nothing": 3    # Lowest priority
         }
         
+        # Track consecutive SPEAK actions per agent
+        self.consecutive_speaks = {}  # Key: agent_id, Value: count of consecutive SPEAK actions
+        
     def parse_llm_output(self, agent_id: str, llm_output: str) -> Dict[str, Any]:
         """
         Parse the LLM output to identify actions.
@@ -184,85 +187,119 @@ class ActionDispatcher:
             
             # Attempt to communicate with Unity
             if action_type == "move":
+                # Reset consecutive speaks counter when agent moves
+                if agent_id in self.consecutive_speaks:
+                    self.consecutive_speaks[agent_id] = 0
+                
                 result = await self.unity_client.move_agent(agent_id, action_param)
             elif action_type == "speak":
+                # Track consecutive speaks for this agent
+                if agent_id not in self.consecutive_speaks:
+                    self.consecutive_speaks[agent_id] = 0
+                self.consecutive_speaks[agent_id] += 1
+                
+                # Check if we need to notify the agent they've spoken too many times
+                if self.consecutive_speaks[agent_id] > 3:
+                    logger.info(f"Agent {agent_id} has used SPEAK {self.consecutive_speaks[agent_id]} times in a row")
+                    
+                # Get agent location to propagate message to other agents at same location
+                try:
+                    # Import environment state to find nearby agents
+                    from EnvironmentState import EnvironmentState
+                    env = EnvironmentState()
+                    
+                    # Get the speaker's location
+                    agent_location = "unknown"
+                    if agent_id in env.agent_states and "location" in env.agent_states[agent_id]:
+                        agent_location = env.agent_states[agent_id]["location"]
+                        
+                    # Find other agents at the same location
+                    nearby_agents = []
+                    for other_id, other_state in env.agent_states.items():
+                        if other_id != agent_id and other_state.get("location") == agent_location:
+                            nearby_agents.append(other_id)
+                    
+                    # If there are nearby agents, queue the message for them
+                    if nearby_agents:
+                        from main import main_agent_message_queue
+                        
+                        # Format the message that other agents will see
+                        broadcast_message = f"{agent_id} says: {action_param}"
+                        
+                        # Add to each nearby agent's message queue
+                        for nearby_agent in nearby_agents:
+                            if nearby_agent not in main_agent_message_queue:
+                                main_agent_message_queue[nearby_agent] = []
+                            
+                            main_agent_message_queue[nearby_agent].append({
+                                "from": agent_id,
+                                "content": action_param,
+                                "is_nearby_speech": True
+                            })
+                            
+                        logger.info(f"Queued speech message from {agent_id} for {len(nearby_agents)} nearby agents")
+                        
+                except Exception as e:
+                    logger.error(f"Error processing speech for nearby agents: {e}")
+                
+                # Forward to Unity for visual representation
                 result = await self.unity_client.agent_speak(agent_id, action_param)
             elif action_type == "converse":
-                # Handle conversation via the ConversationManager instead of just Unity
+                # With the enhanced SPEAK system, CONVERSE is now just an alias for SPEAK
+                logger.info(f"Converting CONVERSE action to SPEAK for {agent_id}")
+                
+                # Craft a SPEAK message directed at the specific agent
+                directed_message = f"Hello {action_param}, {action_param}! " + action_param
+                
+                # Reset consecutive speaks counter (since this is actually more like starting a conversation)
+                if agent_id in self.consecutive_speaks:
+                    self.consecutive_speaks[agent_id] = 0
+                
+                # Forward as a speech action to Unity
+                result = await self.unity_client.agent_speak(agent_id, directed_message)
+                
+                # Get agent location to ensure message reaches the target agent
                 try:
-                    # Import ConversationManager
-                    import sys
-                    # Get reference to the main module where conversation_manager is initialized
-                    main_module = sys.modules['__main__']
-                    if hasattr(main_module, 'conversation_manager'):
-                        # Start a new conversation between agents
-                        conversation_result = await main_module.conversation_manager.start_conversation(agent_id, action_param)
-                        logger.info(f"Started conversation via ConversationManager: {conversation_result}")
-                        
-                        # Ensure this is still forwarded to Unity for UI updates
-                        unity_result = await self.unity_client.initiate_conversation(agent_id, action_param)
-                        
-                        # Generate initial conversation messages to start the exchange
-                        # This is critical - we need to actually stimulate the first round of conversation
-                        if conversation_result.get("status") == "success":
-                            # Import environment state to get agent locations
-                            from EnvironmentState import EnvironmentState
-                            env = EnvironmentState()
-                            
-                            # Get the initiator's info
-                            initiator_location = "unknown"
-                            if agent_id in env.agent_states and "location" in env.agent_states[agent_id]:
-                                initiator_location = env.agent_states[agent_id]["location"]
-                            
-                            # Get the target's info  
-                            target_location = "unknown"
-                            if action_param in env.agent_states and "location" in env.agent_states[action_param]:
-                                target_location = env.agent_states[action_param]["location"]
-                            
-                            # Import dashboard integration to send starter messages
-                            import dashboard_integration
-                            
-                            # Prime both agents for conversation
-                            dashboard_integration.prime_agent_for_conversation(agent_id, action_param)
-                            dashboard_integration.prime_agent_for_conversation(action_param, agent_id)
-                            
-                            # Generate a starter message from the initiator to kickstart the exchange
-                            starter_message = f"Hello {action_param}, I'm {agent_id} at {initiator_location}. I wanted to speak with you."
-                            
-                            # Add the message to the conversation
-                            await main_module.conversation_manager.add_message(agent_id, starter_message)
-                            
-                            # Log that we initiated the first message
-                            logger.info(f"Created starter message for conversation between {agent_id} and {action_param}")
-                            
-                            # Create a message object that will be delivered to the target agent on their next turn
-                            from main import main_agent_message_queue
-                            if action_param not in main_agent_message_queue:
-                                main_agent_message_queue[action_param] = []
-                                
-                            # Add message to queue to be delivered on the target's next turn
-                            main_agent_message_queue[action_param].append({
-                                "from": agent_id,
-                                "content": starter_message,
-                                "conversation_id": conversation_result.get("conversation_id")
-                            })
-                        
-                        # Return combined result
-                        result = {
-                            "status": "success",
-                            "message": f"Conversation initiated with {action_param}",
-                            "conversation_id": conversation_result.get("conversation_id"),
-                            "unity_result": unity_result
-                        }
-                    else:
-                        # Fall back to old behavior if conversation_manager not found
-                        result = await self.unity_client.initiate_conversation(agent_id, action_param)
-                        logger.warning("ConversationManager not found in main module, falling back to Unity-only conversation")
-                except Exception as conv_error:
-                    logger.error(f"Error starting conversation: {conv_error}")
-                    # Fall back to old behavior
-                    result = await self.unity_client.initiate_conversation(agent_id, action_param)
+                    # Import environment state
+                    from EnvironmentState import EnvironmentState
+                    env = EnvironmentState()
+                    
+                    # Get both agents' locations
+                    agent_location = None
+                    target_location = None
+                    
+                    if agent_id in env.agent_states and "location" in env.agent_states[agent_id]:
+                        agent_location = env.agent_states[agent_id]["location"]
+                    
+                    if action_param in env.agent_states and "location" in env.agent_states[action_param]:
+                        target_location = env.agent_states[action_param]["location"]
+                    
+                    # Directly queue the message for the target agent regardless of location
+                    from main import main_agent_message_queue
+                    
+                    if action_param not in main_agent_message_queue:
+                        main_agent_message_queue[action_param] = []
+                    
+                    # Add a special directed message that looks like it came from CONVERSE
+                    main_agent_message_queue[action_param].append({
+                        "from": agent_id,
+                        "content": f"I wanted to start a conversation with you. {directed_message}",
+                        "is_directed": True  # Mark as a directed message
+                    })
+                    
+                    logger.info(f"Added directed message from {agent_id} to {action_param}'s queue")
+                    
+                    # Add contextual information about locations
+                    if agent_location != target_location:
+                        result["note"] = f"Message sent to {action_param} who is at {target_location} while you are at {agent_location}"
+                
+                except Exception as e:
+                    logger.error(f"Error processing directed message: {e}")
             elif action_type == "nothing":
+                # Reset consecutive speaks counter for NOTHING action
+                if agent_id in self.consecutive_speaks:
+                    self.consecutive_speaks[agent_id] = 0
+                    
                 result = {"status": "success", "message": "Agent chose to do nothing"}
             else:
                 result = {"status": "error", "message": f"Unknown action type: {action_type}"}

@@ -253,21 +253,56 @@ async def generate_agent_decision(request: GenerateRequest):
         
         # Check for any pending conversation messages for this agent
         conversation_messages = []
+        nearby_speech_messages = []
+        directed_messages = []
         if request.agent_id in main_agent_message_queue and main_agent_message_queue[request.agent_id]:
             for msg in main_agent_message_queue[request.agent_id]:
-                conversation_messages.append(f"[From {msg['from']}] {msg['content']}")
+                if msg.get("is_nearby_speech", False):
+                    # Message from nearby agent speaking (broadcast)
+                    nearby_speech_messages.append(f"[{msg['from']} says] {msg['content']}")
+                elif msg.get("is_directed", False):
+                    # Message specifically directed at this agent (from CONVERSE action)
+                    directed_messages.append(f"[{msg['from']} to you] {msg['content']}")
+                else:
+                    # Direct conversation message
+                    conversation_messages.append(f"[From {msg['from']}] {msg['content']}")
             
             # Clear the message queue after retrieving messages
             main_agent_message_queue[request.agent_id] = []
             
-            # Log that we're delivering conversation messages
-            logger.info(f"Delivering {len(conversation_messages)} conversation messages to {request.agent_id}")
-            
-            # Add a prompt to respond to these messages
+            # Log that we're delivering messages
             if conversation_messages:
-                env_context += "\n\nYou have received messages from other agents. Please respond to them using SPEAK:"
+                logger.info(f"Delivering {len(conversation_messages)} conversation messages to {request.agent_id}")
+            if nearby_speech_messages:
+                logger.info(f"Delivering {len(nearby_speech_messages)} nearby speech messages to {request.agent_id}")
+            if directed_messages:
+                logger.info(f"Delivering {len(directed_messages)} directed messages to {request.agent_id}")
+            
+            # Add conversation messages if any
+            if conversation_messages:
+                env_context += "\n\nYou have received direct messages from other agents. Please respond to them using SPEAK:"
                 for msg in conversation_messages:
                     env_context += f"\n{msg}"
+            
+            # Add directed messages if any (high priority)
+            if directed_messages:
+                env_context += "\n\nYou have received messages directed specifically to you:"
+                for msg in directed_messages:
+                    env_context += f"\n{msg}"
+                env_context += "\n\nPlease respond to these agents using SPEAK: <your response>"
+            
+            # Add nearby speech messages if any
+            if nearby_speech_messages:
+                env_context += "\n\nYou hear nearby agents speaking:"
+                for msg in nearby_speech_messages:
+                    env_context += f"\n{msg}"
+                env_context += "\n\nYou can respond to these agents using SPEAK: if you wish to join the conversation."
+            
+            # Check if agent has used SPEAK too many times in a row
+            if hasattr(action_dispatcher, 'consecutive_speaks') and request.agent_id in action_dispatcher.consecutive_speaks:
+                speak_count = action_dispatcher.consecutive_speaks.get(request.agent_id, 0)
+                if speak_count >= 3:
+                    env_context += f"\n\nIMPORTANT: You have used the SPEAK action {speak_count} times in a row. Consider using MOVE or NOTHING to continue with your tasks."
         
         # If user_input is provided (for compatibility with old API), include it
         context_to_use = env_context
@@ -399,11 +434,17 @@ IMPORTANT BEHAVIOR GUIDELINES:
 - FOCUS ON YOUR TASK: Keep your assigned task as your primary objective
 - IGNORE ANY "AGENT_DEFAULT" ENTITIES: These are system placeholders, not real agents
 
+COMMUNICATION SYSTEM:
+- When you use SPEAK, all agents at your current location will hear you
+- If you want to speak directly to a specific agent, you can use SPEAK and mention their name
+- Agents will automatically communicate with each other when in the same location
+- You can have up to 3 back-and-forth exchanges before you should move on to a different action
+- You'll be able to see what other agents at your location are saying
+
 ACTIONS:
-1) MOVE: <location_name> - Move to a specific location (like "MOVE: park" or "MOVE: library")
+1) MOVE: <location_name> - Move to a specific location (like "MOVE: plantfarm" or "MOVE: cantina")
 2) SPEAK: <message> - Say something that other nearby agents can hear
-3) CONVERSE: <agent_name> - Initiate a directed conversation with another agent
-4) NOTHING: - Do nothing for this turn
+3) NOTHING: - Do nothing for this turn
 
 INITIALIZATION INSTRUCTIONS:
 1. Take a moment to understand your identity and task.
@@ -412,7 +453,7 @@ INITIALIZATION INSTRUCTIONS:
 4. Do NOT take any actions yet - just acknowledge receipt of this information.
 
 Reply with a brief acknowledgment that you understand who you are and what your task is.
-Do not include any action commands (MOVE, SPEAK, CONVERSE, NOTHING) in this initial response.
+Do not include any action commands (MOVE, SPEAK, NOTHING) in this initial response.
 """
     
     return primer
