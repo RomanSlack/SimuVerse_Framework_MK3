@@ -337,7 +337,7 @@ YOUR LOCATION:
 You are currently at {location}.
 
 AVAILABLE LOCATIONS:
-You can move between these locations: home, park, library, cantina, gym, o2_regulator_room
+You can move between these locations: home, plantfarm, cantina, solarfarm, electricalroom, livingquarters
 
 IMPORTANT BEHAVIOR GUIDELINES:
 - PRIORITIZE MOVEMENT AND EXPLORATION: You should regularly move between different locations 
