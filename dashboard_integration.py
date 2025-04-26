@@ -265,6 +265,56 @@ SPEAK: [Your message to the human]
         logger.error(f"Error sending message to agent {agent_id}: {e}")
         return False
 
+# Send a priming message to prepare an agent for chat mode
+def prime_agent_for_chat(agent_id):
+    """
+    Send a priming message to prepare an agent for chat mode.
+    This ensures the agent is ready to chat with the user.
+    """
+    logger.info(f"Priming agent {agent_id} for chat mode")
+    
+    try:
+        import requests
+        from EnvironmentState import EnvironmentState
+        
+        # Get the current environment state
+        env = EnvironmentState()
+        
+        # Create a priming system prompt
+        prime_system_prompt = """
+You are about to enter DIRECT CHAT MODE with a human user through the dashboard interface.
+This is a silent preparation message to help you transition to conversation mode.
+
+In your next response, please:
+1. Acknowledge that you're ready to chat with the human
+2. Briefly introduce yourself (who you are and what your role is)
+3. Ask how you can help them today
+4. Use the SPEAK action format for your response
+
+For example:
+"Hello! I'm Agent_X, responsible for monitoring the colony's water systems. I'm ready to chat with you. How can I assist you today?
+
+SPEAK: Hello! I'm ready to chat. How can I help you?"
+"""
+        
+        # Create payload for the API call
+        payload = {
+            "agent_id": agent_id,
+            "user_input": "[Dashboard Chat Mode Activated]",
+            "system_prompt": prime_system_prompt  # Override with conversation-focused prompt
+        }
+        
+        # Make the API call silently - we won't show this response to the user
+        # but it prepares the agent for chat mode
+        try:
+            requests.post('http://localhost:3000/generate', json=payload)
+            logger.info(f"Successfully primed agent {agent_id} for chat mode")
+        except Exception as e:
+            logger.warning(f"Failed to prime agent {agent_id} for chat: {e}")
+            
+    except Exception as e:
+        logger.error(f"Error priming agent {agent_id} for chat: {e}")
+
 # Function to update simulation status
 def update_simulation_status(running=True, agent_count=None):
     """

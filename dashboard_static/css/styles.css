@@ -553,6 +553,16 @@ ul {
     border-top-right-radius: 0;
 }
 
+.from-system .message-bubble {
+    background-color: var(--info-color);
+    color: white;
+    border-radius: 1rem;
+    font-style: italic;
+    text-align: center;
+    margin: 0 auto;
+    max-width: 90%;
+}
+
 .message-meta {
     font-size: 0.75rem;
     color: var(--gray-500);

@@ -121,11 +121,43 @@ def handle_connect():
 def handle_agent_detail_request(data):
     agent_id = data.get('agent_id')
     if agent_id in agent_states:
+        # Send the current agent data
         emit('agent_detail', {
             "agent": agent_states[agent_id],
             "messages": agent_messages.get(agent_id, []),
             "history": agent_history.get(agent_id, [])  # Send all history, not just last 50
         })
+        
+        # Send a "chat mode activated" message when chat is opened
+        try:
+            import dashboard_integration
+            if dashboard_integration.dashboard_running:
+                # Send a system message that chat mode is activated
+                if agent_id not in agent_messages or len(agent_messages[agent_id]) == 0:
+                    # Add a welcome message from the system
+                    system_msg = {
+                        "from": "system",
+                        "content": "Chat mode activated. The agent will now focus on conversation.",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    if agent_id not in agent_messages:
+                        agent_messages[agent_id] = []
+                    
+                    agent_messages[agent_id].append(system_msg)
+                    
+                    # Also emit this message to the client
+                    emit('agent_message', {
+                        'agent_id': agent_id,
+                        'message': "Chat mode activated. The agent will now focus on conversation.",
+                        'from': 'system',
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    
+                # Send a "prime" message to prepare the agent for chat
+                dashboard_integration.prime_agent_for_chat(agent_id)
+        except Exception as e:
+            logger.error(f"Error sending chat mode message: {e}")
 
 # Integration with existing backend
 

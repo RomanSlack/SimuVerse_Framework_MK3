@@ -14,6 +14,8 @@ We've fixed several dashboard issues:
 6. **Chat with LLM**: Implemented real LLM-based chat using direct API calls
 7. **Focused Conversations**: Agents now pause exploration to focus on chat conversations
 8. **Contextual Responses**: Special system prompt ensures agents respond appropriately to user messages
+9. **Chat Mode Activation**: Dashboard automatically primes agents for chat when opening the conversation
+10. **System Messages**: Added system messages to indicate when chat mode is activated
 
 These fixes are now part of the main codebase. If you're still experiencing issues, continue with the troubleshooting steps below.
 
