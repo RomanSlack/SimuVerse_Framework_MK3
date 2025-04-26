@@ -139,7 +139,7 @@ def handle_agent_detail_request(data):
         emit('agent_detail', {
             "agent": agent_states[agent_id],
             "messages": agent_messages.get(agent_id, []),
-            "history": agent_history.get(agent_id, [])[:50]  # Limit to recent history
+            "history": agent_history.get(agent_id, [])  # Send all history, not just last 50
         })
 
 # Integration with existing backend
@@ -147,17 +147,19 @@ def handle_agent_detail_request(data):
 def send_to_backend(agent_id, message):
     """
     Send a message to the Unity frontend through the existing backend.
-    This function should be customized to work with your BackendCommunicator.
+    This function is integrated with the dashboard_integration module.
     """
     try:
-        # Import your ActionDispatcher or relevant module here
-        from ActionDispatcher import ActionDispatcher
+        # Use the dashboard_integration module to send messages
+        import dashboard_integration
+        success = dashboard_integration.send_message_to_agent(agent_id, message)
         
-        # This is a placeholder - implement based on your existing code
-        # ActionDispatcher.send_message_to_agent(agent_id, message)
-        
-        logger.info(f"Message sent to agent {agent_id}: {message}")
-        return True
+        if success:
+            logger.info(f"Message sent to agent {agent_id}: {message}")
+            return True
+        else:
+            logger.warning(f"Failed to send message to agent {agent_id}")
+            return False
     except Exception as e:
         logger.error(f"Error sending message to backend: {e}")
         return False

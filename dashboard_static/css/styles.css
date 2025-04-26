@@ -678,6 +678,27 @@ ul {
     overflow-x: auto;
 }
 
+/* Back to Top Button */
+.back-to-top {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    margin: 1rem auto;
+    padding: 0.5rem 1rem;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.back-to-top:hover {
+    background-color: var(--primary-hover);
+}
+
 /* Notification System */
 .notification-container {
     position: fixed;

@@ -2,6 +2,16 @@
 
 If you're experiencing issues with the dashboard, here are some common problems and their solutions:
 
+## Recent Fixes (2025-04-25)
+
+We've fixed several dashboard issues:
+
+1. **Location Information**: The dashboard now correctly shows agent locations instead of "Unknown"
+2. **Chat Functionality**: Chat now properly connects to agent LLMs and avoids duplicate messages
+3. **History Logs**: The dashboard shows all agent history entries, not just the most recent ones
+
+These fixes are now part of the main codebase. If you're still experiencing issues, continue with the troubleshooting steps below.
+
 ## 1. EventletSocketIO and OpenAI Monkey Patching Issues
 
 The error message about monkey patching and the PortAudio library is a common conflict between EventletSocketIO (used for WebSockets) and the OpenAI library.

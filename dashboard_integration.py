@@ -100,7 +100,15 @@ def update_agent_state(agent_id, state_data):
         return
     
     try:
+        # Make sure location is included in state data (this fixes "Unknown" location)
+        if isinstance(state_data, dict) and state_data.get("location") is None:
+            from EnvironmentState import EnvironmentState
+            env = EnvironmentState()
+            if agent_id in env.agent_states and "location" in env.agent_states[agent_id]:
+                state_data["location"] = env.agent_states[agent_id]["location"]
+        
         dashboard.update_agent_state(agent_id, state_data)
+        logger.debug(f"Updated agent {agent_id} state in dashboard: {state_data}")
     except Exception as e:
         logger.error(f"Error updating agent state in dashboard: {e}")
 
@@ -122,6 +130,7 @@ def record_agent_message(agent_id, message, is_from_agent=True):
     
     try:
         dashboard.record_agent_message(agent_id, message, is_from_agent)
+        logger.debug(f"Recorded agent message for {agent_id}: {message[:50]}...")
     except Exception as e:
         logger.error(f"Error recording agent message in dashboard: {e}")
 
@@ -145,19 +154,39 @@ def send_message_to_agent(agent_id, message):
         # Import your existing modules here
         from ActionDispatcher import ActionDispatcher
         
-        # This is where you'd integrate with your existing message handling
-        # For example:
-        # dispatcher = ActionDispatcher()
-        # response = dispatcher.process_input_message(agent_id, message)
+        # Connect to the actual backend session manager for the agent
+        from AgentSessionManager import AgentSessionManager
+        from EnvironmentState import EnvironmentState
         
-        # Mock success for now - replace with actual integration
-        success = True
+        env = EnvironmentState()
+        session_manager = AgentSessionManager()
+        
+        # Get environment context for the agent
+        env_context = env.get_formatted_context_string(agent_id)
+        
+        # Add user message to the context
+        context_to_use = f"{env_context}\n\nUser Input: {message}"
+        
+        # Generate a response from the LLM
+        response_future = session_manager.generate_response(agent_id, context_to_use)
+        
+        # Use asyncio to get the response
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_response = loop.run_until_complete(response_future)
+        loop.close()
         
         # Record the human message in the dashboard
-        if success and dashboard_running and dashboard:
+        if dashboard_running and dashboard:
+            # Record the human message
             dashboard.record_agent_message(agent_id, message, is_from_agent=False)
+            
+            # Record the agent's response
+            if llm_response and "text" in llm_response:
+                dashboard.record_agent_message(agent_id, llm_response["text"], is_from_agent=True)
         
-        return success
+        return True
     except Exception as e:
         logger.error(f"Error sending message to agent {agent_id}: {e}")
         return False

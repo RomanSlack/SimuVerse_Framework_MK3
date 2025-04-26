@@ -112,11 +112,19 @@ class ActionDispatcher:
                         is_from_agent=True
                     )
                 
+                # Get current location from EnvironmentState
+                from EnvironmentState import EnvironmentState
+                env = EnvironmentState()
+                location = "unknown"
+                if agent_id in env.agent_states and "location" in env.agent_states[agent_id]:
+                    location = env.agent_states[agent_id]["location"]
+                
                 # Update agent state in dashboard
                 state_update = {
                     "status": f"Performing action: {action_type}",
                     "action_type": action_type,
-                    "action_param": action_param
+                    "action_param": action_param,
+                    "location": location  # Include location in state update
                 }
                 dashboard_integration.update_agent_state(agent_id, state_update)
             except Exception as e:

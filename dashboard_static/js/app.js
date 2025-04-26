@@ -496,7 +496,7 @@ function renderAgentHistory(history) {
     historyListEl.innerHTML = '';
     
     // Sort history by timestamp (most recent first)
-    const sortedHistory = [...history].reverse().slice(0, 50);
+    const sortedHistory = [...history].reverse();
     
     sortedHistory.forEach(item => {
         const historyEl = document.createElement('div');
@@ -521,6 +521,17 @@ function renderAgentHistory(history) {
         
         historyListEl.appendChild(historyEl);
     });
+    
+    // Add a "back to top" button if there are many entries
+    if (sortedHistory.length > 20) {
+        const backToTopButton = document.createElement('button');
+        backToTopButton.className = 'back-to-top';
+        backToTopButton.innerHTML = '<span class="material-icons">arrow_upward</span> Back to Top';
+        backToTopButton.addEventListener('click', () => {
+            historyListEl.scrollTop = 0;
+        });
+        historyListEl.appendChild(backToTopButton);
+    }
 }
 
 // Handle a new agent message
@@ -570,13 +581,16 @@ function sendMessage() {
     // Clear input
     chatInputEl.value = '';
     
+    // Create a unique message ID to avoid duplicates
+    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     // Send message to server
     fetch(`/api/agent/${selectedAgentId}/message`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ message })
+        body: JSON.stringify({ message, messageId })
     })
     .then(response => response.json())
     .then(data => {
@@ -590,27 +604,9 @@ function sendMessage() {
         showNotification('Error', 'Failed to send message', 'error');
     });
     
-    // Optimistically add message to chat
-    const messageEl = document.createElement('div');
-    messageEl.className = 'chat-message from-human';
-    
-    const time = formatTime(new Date());
-    
-    messageEl.innerHTML = `
-        <div class="message-bubble">${message}</div>
-        <div class="message-meta">${time}</div>
-    `;
-    
-    // Remove empty state if it exists
-    const emptyState = chatMessagesEl.querySelector('.chat-empty-state');
-    if (emptyState) {
-        chatMessagesEl.innerHTML = '';
-    }
-    
-    chatMessagesEl.appendChild(messageEl);
-    
-    // Scroll to bottom
-    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    // The server will emit the message via socket.io, so we don't need to add it to the UI here
+    // The handleAgentMessage function will take care of adding it to the chat when it comes back
+    // This prevents duplicate messages
 }
 
 // Filter agents in the sidebar
