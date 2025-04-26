@@ -165,6 +165,9 @@ app.include_router(conversation_router)
 environment_poll_task = None
 conversation_cleanup_task = None
 
+# Message queue for inter-agent communication
+main_agent_message_queue = {}
+
 # Request/Response Models
 class GenerateRequest(BaseModel):
     agent_id: str = Field(..., description="Unique identifier for the agent")
@@ -248,6 +251,24 @@ async def generate_agent_decision(request: GenerateRequest):
         # Add task reminder to the context
         env_context = f"{env_context}\n\nREMINDER - YOUR CURRENT TASK:\n{agent_task}"
         
+        # Check for any pending conversation messages for this agent
+        conversation_messages = []
+        if request.agent_id in main_agent_message_queue and main_agent_message_queue[request.agent_id]:
+            for msg in main_agent_message_queue[request.agent_id]:
+                conversation_messages.append(f"[From {msg['from']}] {msg['content']}")
+            
+            # Clear the message queue after retrieving messages
+            main_agent_message_queue[request.agent_id] = []
+            
+            # Log that we're delivering conversation messages
+            logger.info(f"Delivering {len(conversation_messages)} conversation messages to {request.agent_id}")
+            
+            # Add a prompt to respond to these messages
+            if conversation_messages:
+                env_context += "\n\nYou have received messages from other agents. Please respond to them using SPEAK:"
+                for msg in conversation_messages:
+                    env_context += f"\n{msg}"
+        
         # If user_input is provided (for compatibility with old API), include it
         context_to_use = env_context
         if request.user_input:
@@ -260,6 +281,32 @@ async def generate_agent_decision(request: GenerateRequest):
         # Parse the response for actions
         parsed_action = action_dispatcher.parse_llm_output(request.agent_id, llm_response["text"])
         
+        # If the agent has received conversation messages and responds with SPEAK,
+        # we need to route that as a conversation reply, not just a regular speech action
+        if conversation_messages and parsed_action["action_type"] == "speak":
+            try:
+                # Find the conversation this agent is participating in
+                if hasattr(conversation_manager, "is_agent_in_conversation") and conversation_manager.is_agent_in_conversation(request.agent_id):
+                    # Get the conversation
+                    conversation = conversation_manager.get_agent_conversation(request.agent_id)
+                    if conversation:
+                        # Add this message to the conversation
+                        await conversation_manager.add_message(request.agent_id, parsed_action["action_param"])
+                        
+                        logger.info(f"Added conversation reply from {request.agent_id}: {parsed_action['action_param']}")
+                        
+                        # Check if we've reached max rounds and need to terminate
+                        if conversation["rounds"] >= conversation_manager.max_rounds:
+                            # End the conversation due to max rounds
+                            await conversation_manager.end_conversation(
+                                conversation["id"], 
+                                f"Conversation ended after reaching the maximum of {conversation_manager.max_rounds} rounds"
+                            )
+                            
+                            logger.info(f"Ended conversation {conversation['id']} after {conversation_manager.max_rounds} rounds")
+            except Exception as e:
+                logger.error(f"Error handling conversation reply: {e}")
+                
         # Dispatch the action (async)
         asyncio.create_task(action_dispatcher.dispatch_action(parsed_action))
         

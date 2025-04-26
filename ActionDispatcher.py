@@ -202,6 +202,51 @@ class ActionDispatcher:
                         # Ensure this is still forwarded to Unity for UI updates
                         unity_result = await self.unity_client.initiate_conversation(agent_id, action_param)
                         
+                        # Generate initial conversation messages to start the exchange
+                        # This is critical - we need to actually stimulate the first round of conversation
+                        if conversation_result.get("status") == "success":
+                            # Import environment state to get agent locations
+                            from EnvironmentState import EnvironmentState
+                            env = EnvironmentState()
+                            
+                            # Get the initiator's info
+                            initiator_location = "unknown"
+                            if agent_id in env.agent_states and "location" in env.agent_states[agent_id]:
+                                initiator_location = env.agent_states[agent_id]["location"]
+                            
+                            # Get the target's info  
+                            target_location = "unknown"
+                            if action_param in env.agent_states and "location" in env.agent_states[action_param]:
+                                target_location = env.agent_states[action_param]["location"]
+                            
+                            # Import dashboard integration to send starter messages
+                            import dashboard_integration
+                            
+                            # Prime both agents for conversation
+                            dashboard_integration.prime_agent_for_conversation(agent_id, action_param)
+                            dashboard_integration.prime_agent_for_conversation(action_param, agent_id)
+                            
+                            # Generate a starter message from the initiator to kickstart the exchange
+                            starter_message = f"Hello {action_param}, I'm {agent_id} at {initiator_location}. I wanted to speak with you."
+                            
+                            # Add the message to the conversation
+                            await main_module.conversation_manager.add_message(agent_id, starter_message)
+                            
+                            # Log that we initiated the first message
+                            logger.info(f"Created starter message for conversation between {agent_id} and {action_param}")
+                            
+                            # Create a message object that will be delivered to the target agent on their next turn
+                            from main import main_agent_message_queue
+                            if action_param not in main_agent_message_queue:
+                                main_agent_message_queue[action_param] = []
+                                
+                            # Add message to queue to be delivered on the target's next turn
+                            main_agent_message_queue[action_param].append({
+                                "from": agent_id,
+                                "content": starter_message,
+                                "conversation_id": conversation_result.get("conversation_id")
+                            })
+                        
                         # Return combined result
                         result = {
                             "status": "success",
