@@ -314,6 +314,16 @@ async def generate_agent_decision(request: GenerateRequest):
                     conversation_messages.append(msg_text)
                     logger.info(f"Added conversation message: {msg_text}")
             
+            # Pull any direct conversation messages from the conversation_manager
+            try:
+                conversation_message = await conversation_manager.get_next_message(request.agent_id)
+                while conversation_message:
+                    logger.info(f"Retrieved conversation message for {request.agent_id}: {conversation_message['content']}")
+                    conversation_messages.append(f"[From {conversation_message['sender']}] {conversation_message['content']}")
+                    conversation_message = await conversation_manager.get_next_message(request.agent_id)
+            except Exception as e:
+                logger.error(f"Error retrieving conversation messages for {request.agent_id}: {e}")
+            
             # Log detailed info about message retrieval before clearing the queue
             try:
                 with open("message_retrieval.log", "a") as f:
