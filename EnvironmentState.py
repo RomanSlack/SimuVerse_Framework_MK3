@@ -345,13 +345,60 @@ class EnvironmentState:
             List of agent IDs at the location
         """
         with self._lock:
+            # Safety check for None or empty locations
+            if not location_name or location_name.lower() == "unknown":
+                logger.warning(f"Called get_agents_at_location with invalid location: {location_name}")
+                return []
+                
             location_name = location_name.lower()
             agents = []
             
-            for agent_id, agent_data in self.agent_states.items():
-                if agent_data.get("location", "").lower() == location_name:
-                    agents.append(agent_id)
+            # Write detailed debug info about all agent locations
+            try:
+                import datetime
+                with open("agent_locations_debug.log", "a") as f:
+                    f.write(f"\n[{datetime.datetime.now().isoformat()}] LOCATION CHECK FOR: {location_name}\n")
+                    f.write("Current agent locations:\n")
+                    for a_id, a_data in self.agent_states.items():
+                        a_loc = a_data.get("location", "unknown").lower()
+                        f.write(f"  {a_id}: {a_loc}\n")
+                        
+                        # Also write the raw agent data for debugging
+                        f.write(f"  Raw data: {a_data}\n")
+            except Exception as e:
+                logger.error(f"Error writing location debug log: {e}")
             
+            # IMPORTANT FIX: Use case-insensitive EXACT string comparison, not substring matching
+            for agent_id, agent_data in self.agent_states.items():
+                agent_location = agent_data.get("location", "").lower()
+                
+                # Skip Agent_Default and empty locations
+                if "default" in agent_id.lower() or not agent_location:
+                    continue
+                    
+                # Use exact string matching (case-insensitive)
+                if agent_location == location_name:
+                    agents.append(agent_id)
+                    logger.info(f"LOCATION MATCH: Agent {agent_id} at '{agent_location}' matches '{location_name}'")
+            
+            # Only if no exact matches are found, try fuzzy matching
+            if not agents:
+                logger.warning(f"No exact location matches for '{location_name}', trying fuzzy matching")
+                for agent_id, agent_data in self.agent_states.items():
+                    agent_location = agent_data.get("location", "").lower()
+                    
+                    # Skip Agent_Default and empty locations
+                    if "default" in agent_id.lower() or not agent_location:
+                        continue
+                        
+                    # Fuzzy matching - strip whitespace and check for substring
+                    if (agent_location.strip() == location_name.strip() or 
+                        agent_location in location_name or 
+                        location_name in agent_location):
+                        agents.append(agent_id)
+                        logger.info(f"FUZZY MATCH: Agent {agent_id} fuzzy matched '{location_name}' with '{agent_location}'")
+            
+            logger.info(f"Found {len(agents)} agents at location {location_name}: {agents}")
             return agents
     
     def get_objects_at_location(self, location_name: str) -> List[Dict[str, Any]]:

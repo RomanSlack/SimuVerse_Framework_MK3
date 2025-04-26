@@ -178,6 +178,19 @@ class ActionDispatcher:
                 # Update environment state
                 env.update_agent_state(agent_id, state_update)
                 
+                # Log location changes for debugging speech propagation
+                if "location" in state_update:
+                    try:
+                        import datetime
+                        with open("location_changes.log", "a") as f:
+                            f.write(f"[{datetime.datetime.now().isoformat()}] LOCATION UPDATE\n")
+                            f.write(f"Agent: {agent_id}\n")
+                            f.write(f"New location: {state_update['location']}\n")
+                            f.write(f"Current agents at same location: {env.get_agents_at_location(state_update['location'])}\n")
+                            f.write("-" * 80 + "\n")
+                    except Exception as log_err:
+                        logger.error(f"Error logging location change: {log_err}")
+                
                 # Ensure dashboard gets the latest state
                 if HAS_DASHBOARD:
                     dashboard_integration.update_agent_state(agent_id, state_update)
@@ -215,12 +228,35 @@ class ActionDispatcher:
                         
                     # Find other agents at the same location
                     nearby_agents = []
-                    for other_id, other_state in env.agent_states.items():
-                        if other_id != agent_id and other_state.get("location") == agent_location:
-                            nearby_agents.append(other_id)
                     
-                    # Import dashboard integration to record messages
-                    import dashboard_integration
+                    # Use the dedicated method to find agents at the same location
+                    all_agents_at_location = env.get_agents_at_location(agent_location)
+                    
+                    # Filter out the speaking agent
+                    nearby_agents = [other_id for other_id in all_agents_at_location if other_id != agent_id]
+                    
+                    # Log the location check
+                    logger.info(f"SPEECH: Agent {agent_id} is at {agent_location} with nearby agents: {nearby_agents}")
+                    
+                    # Write more detailed debug info
+                    try:
+                        import datetime
+                        with open("speech_debug_location.log", "a") as f:
+                            f.write(f"\n[{datetime.datetime.now().isoformat()}] AGENT SPEECH\n")
+                            f.write(f"Speaking agent: {agent_id} at location: {agent_location}\n")
+                            f.write(f"All agents at this location: {all_agents_at_location}\n")
+                            f.write(f"Nearby agents (excluding speaker): {nearby_agents}\n")
+                            f.write(f"All known locations:\n")
+                            for a_id, a_state in env.agent_states.items():
+                                a_loc = a_state.get("location", "unknown")
+                                f.write(f"  {a_id}: {a_loc}\n")
+                            f.write("-" * 80 + "\n")
+                    except Exception as e:
+                        logger.error(f"Error writing speech debug location: {e}")
+                    
+                    # Use the global dashboard integration
+                    from builtins import __import__
+                    dashboard_integration = __import__('dashboard_integration')
                     
                     # If there are nearby agents, queue the message for them
                     if nearby_agents:
@@ -287,11 +323,40 @@ class ActionDispatcher:
                             
                             main_agent_message_queue[nearby_agent].append(message_data)
                             
+                            # Log detailed info about message queue status
+                            try:
+                                import datetime
+                                with open("speech_propagation.log", "a") as f:
+                                    f.write(f"\n[{datetime.datetime.now().isoformat()}] SPEECH PROPAGATION\n")
+                                    f.write(f"FROM: {agent_id} at {agent_location}\n")
+                                    f.write(f"TO: {nearby_agent}\n")
+                                    f.write(f"MESSAGE: {action_param}\n")
+                                    f.write(f"QUEUE STATUS: {len(main_agent_message_queue[nearby_agent])} messages in queue for {nearby_agent}\n")
+                                    f.write(f"FULL QUEUE: {main_agent_message_queue[nearby_agent]}\n")
+                                    f.write("-" * 80 + "\n")
+                            except Exception as log_err:
+                                logger.error(f"Error logging speech propagation: {log_err}")
+                            
                         logger.info(f"Queued speech message from {agent_id} for {len(nearby_agents)} nearby agents")
                         
                 except Exception as e:
                     logger.error(f"Error processing speech for nearby agents: {e}")
                 
+                # Log this speech action to the dedicated speech log
+                try:
+                    import datetime
+                    speech_log_file = "/home/roman-slack/SimuExoV1/SimuVerse_Backend/agent_speech_log.txt"
+                    with open(speech_log_file, "a") as f:
+                        f.write(f"\n[{datetime.datetime.now().isoformat()}] SPEECH ACTION\n")
+                        f.write(f"Speaking Agent: {agent_id}\n")
+                        f.write(f"Location: {agent_location}\n")
+                        f.write(f"Message: {action_param}\n")
+                        f.write(f"Agents at same location: {env.get_agents_at_location(agent_location)}\n")
+                        f.write(f"Nearby agents receiving message: {nearby_agents}\n")
+                        f.write("-" * 80 + "\n")
+                except Exception as log_err:
+                    logger.error(f"Error logging to speech log: {log_err}")
+                    
                 # Forward to Unity for visual representation
                 result = await self.unity_client.agent_speak(agent_id, action_param)
             elif action_type == "converse":

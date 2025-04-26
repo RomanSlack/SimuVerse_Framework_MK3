@@ -23,6 +23,12 @@ import dotenv
 dotenv.load_dotenv()
 # Load environment variables
 
+# Create a dedicated log for speech actions
+SPEECH_LOG_FILE = "/home/roman-slack/SimuExoV1/SimuVerse_Backend/agent_speech_log.txt"
+with open(SPEECH_LOG_FILE, "w") as f:
+    f.write("AGENT SPEECH LOG\n")
+    f.write("===============\n")
+
 
 # Configure logging
 logging.basicConfig(
@@ -256,22 +262,72 @@ async def generate_agent_decision(request: GenerateRequest):
         nearby_speech_messages = []
         directed_speech_messages = []  # Messages where agent is directly mentioned
         directed_messages = []
+        
+        # Enhanced logging for message queue checking
+        logger.info(f"Checking message queue for {request.agent_id}. Has queue: {request.agent_id in main_agent_message_queue}")
+        if request.agent_id in main_agent_message_queue:
+            logger.info(f"Queue contents for {request.agent_id}: {main_agent_message_queue[request.agent_id]}")
+        
         if request.agent_id in main_agent_message_queue and main_agent_message_queue[request.agent_id]:
+            logger.info(f"Processing {len(main_agent_message_queue[request.agent_id])} messages for {request.agent_id}")
+            
+            # Get current agent location for context
+            from EnvironmentState import EnvironmentState
+            env = EnvironmentState()
+            agent_location = "unknown"
+            if request.agent_id in env.agent_states and "location" in env.agent_states[request.agent_id]:
+                agent_location = env.agent_states[request.agent_id]["location"]
+            
+            # Log details about message processing
+            try:
+                with open("message_processing.log", "a") as f:
+                    f.write(f"\n[{datetime.datetime.now().isoformat()}] PROCESSING MESSAGES FOR {request.agent_id}\n")
+                    f.write(f"Agent location: {agent_location}\n")
+                    f.write(f"Queue contents: {main_agent_message_queue[request.agent_id]}\n")
+                    f.write(f"Queue size: {len(main_agent_message_queue[request.agent_id])}\n\n")
+            except Exception as e:
+                logger.error(f"Error writing message processing log: {e}")
+            
             for msg in main_agent_message_queue[request.agent_id]:
+                # Log each message processing
+                logger.info(f"Processing message: {msg}")
+                
                 if msg.get("is_nearby_speech", False):
                     if msg.get("is_directed_speech", False):
                         # Speech that directly mentions this agent
-                        directed_speech_messages.append(f"[{msg['from']} says to you] {msg['content']}")
+                        msg_text = f"[{msg['from']} says to you] {msg['content']}"
+                        directed_speech_messages.append(msg_text)
+                        logger.info(f"Added directed speech: {msg_text}")
                     else:
                         # Regular message from nearby agent speaking (broadcast)
-                        nearby_speech_messages.append(f"[{msg['from']} says] {msg['content']}")
+                        msg_text = f"[{msg['from']} says] {msg['content']}"
+                        nearby_speech_messages.append(msg_text)
+                        logger.info(f"Added nearby speech: {msg_text}")
                 elif msg.get("is_directed", False):
                     # Message specifically directed at this agent (from CONVERSE action)
-                    directed_messages.append(f"[{msg['from']} to you] {msg['content']}")
+                    msg_text = f"[{msg['from']} to you] {msg['content']}"
+                    directed_messages.append(msg_text)
+                    logger.info(f"Added directed message: {msg_text}")
                 else:
                     # Direct conversation message
-                    conversation_messages.append(f"[From {msg['from']}] {msg['content']}")
+                    msg_text = f"[From {msg['from']}] {msg['content']}"
+                    conversation_messages.append(msg_text)
+                    logger.info(f"Added conversation message: {msg_text}")
             
+            # Log detailed info about message retrieval before clearing the queue
+            try:
+                with open("message_retrieval.log", "a") as f:
+                    f.write(f"\n[{datetime.datetime.now().isoformat()}] MESSAGE RETRIEVAL FOR {request.agent_id}\n")
+                    f.write(f"Queue before clearing: {main_agent_message_queue[request.agent_id]}\n")
+                    f.write(f"Processed messages:\n")
+                    f.write(f"- Conversation: {conversation_messages}\n")
+                    f.write(f"- Nearby speech: {nearby_speech_messages}\n")
+                    f.write(f"- Directed speech: {directed_speech_messages}\n")
+                    f.write(f"- Directed messages: {directed_messages}\n")
+                    f.write("-" * 80 + "\n")
+            except Exception as log_err:
+                logger.error(f"Error logging message retrieval: {log_err}")
+                
             # Clear the message queue after retrieving messages
             main_agent_message_queue[request.agent_id] = []
             
@@ -339,6 +395,17 @@ Use SPEAK: to respond to any messages above.
         if request.user_input:
             logger.info(f"Using provided user_input for agent {request.agent_id}")
             context_to_use = f"{context_to_use}\n\nUser Input: {request.user_input}"
+        
+        # Log the full context if there's any speech in it
+        if nearby_speech_messages or directed_speech_messages or conversation_messages:
+            with open(f"speech_debug_{request.agent_id}.log", "a") as f:
+                f.write(f"\n\n[{datetime.datetime.now().isoformat()}] SPEECH DETECTED FOR {request.agent_id}\n")
+                f.write(f"Nearby speech: {nearby_speech_messages}\n")
+                f.write(f"Directed speech: {directed_speech_messages}\n")
+                f.write(f"Conversation messages: {conversation_messages}\n")
+                f.write(f"FULL CONTEXT WITH SPEECH:\n{context_to_use}\n")
+                f.write("=" * 80 + "\n")
+            logger.info(f"Logged speech debug info for {request.agent_id} with {len(nearby_speech_messages)} nearby speech messages")
         
         # Generate response from LLM
         llm_response = await session_manager.generate_response(request.agent_id, context_to_use)

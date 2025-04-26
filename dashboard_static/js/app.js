@@ -157,6 +157,16 @@ function setupTabs() {
             // Show corresponding tab content
             tabPanes.forEach(pane => pane.classList.remove('active'));
             document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // If switching to chat tab, send a request for chat mode
+            if (tabName === 'chat' && selectedAgentId) {
+                console.log(`Activating chat mode for ${selectedAgentId}`);
+                // Send special flag to indicate this is for the chat tab
+                socket.emit('request_agent_detail', { 
+                    agent_id: selectedAgentId,
+                    is_chat_tab: true
+                });
+            }
         });
     });
 }
@@ -415,7 +425,10 @@ function selectAgent(agentId) {
     }
     
     // Request agent details from server
-    socket.emit('request_agent_detail', { agent_id: agentId });
+    socket.emit('request_agent_detail', { 
+        agent_id: agentId,
+        is_chat_tab: false  // Default to false when initially selecting
+    });
     
     // Show loading state
     agentDetailTitleEl.textContent = `Agent: ${agentId}`;
